@@ -37,7 +37,9 @@ impl<O: Write> App<O> {
     ///
     /// Panics if the app is already running.
     pub fn start_with(output: O, out_is_tty: bool) -> Self {
-        start_app();
+        if out_is_tty {
+            start_app();
+        }
         Self {
             out: output,
             out_is_tty,
@@ -70,9 +72,11 @@ fn start_app() {
 
 impl<O: Write> Drop for App<O> {
     fn drop(&mut self) {
-        // Probably doesn't need to be `SeqCst`, but I don't understand atomics
-        // and don't want anything to go wrong.
-        APP_RUNNING.store(false, Ordering::SeqCst);
+        if self.out_is_tty {
+            // Probably doesn't need to be `SeqCst`, but I don't understand atomics
+            // and don't want anything to go wrong.
+            APP_RUNNING.store(false, Ordering::SeqCst);
+        }
     }
 }
 
@@ -103,5 +107,13 @@ mod tests {
         let app = App::start();
         drop(app);
         let _ = App::start();
+    }
+
+    #[test]
+    fn can_start_multiple_tests() {
+        let buf_1 = Vec::new();
+        let _app = App::start_with(buf_1, false);
+        let buf_2 = Vec::new();
+        let _ = App::start_with(buf_2, false);
     }
 }
