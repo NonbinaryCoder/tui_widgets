@@ -3,6 +3,10 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
+use widget::Widget;
+
+mod widget;
+
 /// Set to true while an app exists; set to false when it is dropped.
 static APP_RUNNING: AtomicBool = AtomicBool::new(false);
 
@@ -12,23 +16,24 @@ static APP_RUNNING: AtomicBool = AtomicBool::new(false);
 /// app will still exit when in is dropped, but all errors will be ignored.
 #[derive(Debug)]
 #[must_use = "this `App` should be exited with the `exit` function to catch errors"]
-pub struct App<O: Write = StdoutLock<'static>> {
+pub struct App<O: Write = StdoutLock<'static>, R: Widget = Box<dyn Widget>> {
     out: O,
     out_is_tty: bool,
+    root: R,
 }
 
-impl App<StdoutLock<'static>> {
+impl<R: Widget> App<StdoutLock<'static>, R> {
     /// Starts the app.
     ///
     /// # Panics
     ///
     /// Panics if the app is already running.
-    pub fn start() -> Self {
-        Self::start_with(io::stdout().lock(), true)
+    pub fn start(root: R) -> Self {
+        Self::start_with(root, io::stdout().lock(), true)
     }
 }
 
-impl<O: Write> App<O> {
+impl<O: Write, R: Widget> App<O, R> {
     /// Starts the app, with it's output set to the provided stream.  If
     /// `out_is_tty` is unset, terminal functions not relying on ANSI codes will
     /// be skipped.
@@ -36,13 +41,14 @@ impl<O: Write> App<O> {
     /// # Panics
     ///
     /// Panics if the app is already running.
-    pub fn start_with(output: O, out_is_tty: bool) -> Self {
+    pub fn start_with(root: R, output: O, out_is_tty: bool) -> Self {
         if out_is_tty {
             start_app();
         }
         Self {
             out: output,
             out_is_tty,
+            root,
         }
     }
 
@@ -70,7 +76,7 @@ fn start_app() {
     }
 }
 
-impl<O: Write> Drop for App<O> {
+impl<O: Write, R: Widget> Drop for App<O, R> {
     fn drop(&mut self) {
         if self.out_is_tty {
             // Probably doesn't need to be `SeqCst`, but I don't understand atomics
@@ -90,30 +96,30 @@ mod tests {
     #[serial]
     #[should_panic]
     fn cannot_double_start() {
-        let _app = App::start();
-        let _ = App::start();
+        let _app = App::start(());
+        let _ = App::start(());
     }
 
     #[test]
     fn can_restart() -> io::Result<()> {
-        let app = App::start();
+        let app = App::start(());
         app.exit()?;
-        let _ = App::start();
+        let _ = App::start(());
         Ok(())
     }
 
     #[test]
     fn can_restart_after_drop() {
-        let app = App::start();
+        let app = App::start(());
         drop(app);
-        let _ = App::start();
+        let _ = App::start(());
     }
 
     #[test]
     fn can_start_multiple_tests() {
         let buf_1 = Vec::new();
-        let _app = App::start_with(buf_1, false);
+        let _app = App::start_with((), buf_1, false);
         let buf_2 = Vec::new();
-        let _ = App::start_with(buf_2, false);
+        let _ = App::start_with((), buf_2, false);
     }
 }
