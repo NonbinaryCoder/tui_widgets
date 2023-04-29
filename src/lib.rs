@@ -5,7 +5,8 @@ use std::{
 
 use widget::Widget;
 
-mod widget;
+pub mod math;
+pub mod widget;
 
 /// Set to true while an app exists; set to false when it is dropped.
 static APP_RUNNING: AtomicBool = AtomicBool::new(false);
