@@ -1,35 +1,75 @@
-use std::ops::{Add, Sub};
+use std::{
+    fmt::{self, Debug, Display},
+    ops::{Add, Mul, Sub},
+};
 
 /// A two-dimensional vector.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Vec2<T> {
     x: T,
     y: T,
 }
 
 /// A position in 2d space.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Pos2<T> {
     x: T,
     y: T,
 }
 
 /// A two-dimensional size.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Size2<T> {
     width: T,
     height: T,
 }
 
-impl<T> Vec2<T> {
-    pub fn new(x: T, y: T) -> Self {
-        Self { x, y }
-    }
+macro_rules! common_methods {
+    ($ty:ident, $x:ident, $y:ident) => {
+        pub const fn new($x: T, $y: T) -> Self {
+            Self { $x, $y }
+        }
 
-    /// \[x, y\].
-    pub fn decompose(self) -> [T; 2] {
-        [self.x, self.y]
-    }
+        pub fn splat(v: T) -> Self
+        where
+            T: Clone,
+        {
+            Self {
+                $y: v.clone(),
+                $x: v,
+            }
+        }
+
+        pub const fn as_ref(&self) -> $ty<&T> {
+            $ty {
+                $x: &self.$x,
+                $y: &self.$y,
+            }
+        }
+
+        pub fn decompose(self) -> [T; 2] {
+            [self.$x, self.$y]
+        }
+
+        pub fn map<U>(self, mut f: impl FnMut(T) -> U) -> $ty<U> {
+            $ty {
+                $x: f(self.$x),
+                $y: f(self.$y),
+            }
+        }
+
+        /// Converts each field in `self` to `U` with [`Into::into()`].
+        pub fn map_into<U: From<T>>(self) -> $ty<U> {
+            $ty {
+                $x: self.$x.into(),
+                $y: self.$y.into(),
+            }
+        }
+    };
+}
+
+impl<T> Vec2<T> {
+    common_methods!(Vec2, x, y);
 
     pub fn to_pos(self) -> Pos2<T> {
         self.into()
@@ -43,14 +83,7 @@ impl<T> Vec2<T> {
 }
 
 impl<T> Pos2<T> {
-    pub fn new(x: T, y: T) -> Self {
-        Self { x, y }
-    }
-
-    /// \[x, y\].
-    pub fn decompose(self) -> [T; 2] {
-        [self.x, self.y]
-    }
+    common_methods!(Pos2, x, y);
 
     pub fn to_vec(self) -> Vec2<T> {
         self.decompose().into()
@@ -58,19 +91,41 @@ impl<T> Pos2<T> {
 }
 
 impl<T> Size2<T> {
-    pub fn new(width: T, height: T) -> Self {
-        Self { width, height }
-    }
-
-    /// \[width, height\].
-    pub fn decompose(self) -> [T; 2] {
-        [self.width, self.height]
-    }
+    common_methods!(Size2, width, height);
 
     /// width -> x,
     /// height -> y.
     pub fn to_vec(self) -> Vec2<T> {
         self.into()
+    }
+
+    pub fn area(self) -> T::Output
+    where
+        T: Mul,
+    {
+        self.width * self.height
+    }
+
+    /// Returns `true` if `self` contains `rect`.  `rect` is considered
+    /// contained even if it touches the edge of `self`.
+    pub fn contains_rect(self, rect: Rect2<T>) -> bool
+    where
+        T: PartialOrd + Add<Output = T>,
+    {
+        rect.x <= self.width
+            && rect.y < self.height
+            && (rect.x + rect.width) <= self.width
+            && (rect.y + rect.height) <= self.height
+    }
+
+    /// Returns `true` if `self` contains `pos`.  `pos` is considered contained
+    /// even if it touches the edge of `self`.
+    pub fn contains_pos(self, pos: impl Into<Pos2<T>>) -> bool
+    where
+        T: PartialOrd,
+    {
+        let pos = pos.into();
+        pos.x <= self.width && pos.y <= self.height
     }
 }
 
@@ -125,8 +180,33 @@ conversions!(Vec2 into Pos2, Size2);
 conversions!(Pos2 into Vec2);
 conversions!(Size2 into Vec2);
 
+macro_rules! formatting {
+    ($($ty:ident: $a:expr, $b:expr, $c:expr),+) => {
+        $(
+            impl<T: Debug> Debug for $ty<T> {
+                fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                    let [x, y] = self.as_ref().decompose();
+                    write!(f, concat!($a, "{:?}", $b, "{:?}", $c), x, y)
+                }
+            }
+
+            impl<T: Display> Display for $ty<T> {
+                fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                    let [x, y] = self.as_ref().decompose();
+                    write!(f, concat!($a, "{}", $b, "{}", $c), x, y)
+                }
+            }
+        )+
+    };
+}
+formatting!(
+    Vec2: "(", ", ", ")",
+    Pos2: "(", ", ", ")",
+    Size2: "", "x", ""
+);
+
 /// A rectangle defined by it's top left point and it's extents
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Rect2<T> {
     x: T,
     y: T,
@@ -135,7 +215,8 @@ pub struct Rect2<T> {
 }
 
 impl<T> Rect2<T> {
-    pub fn new(pos: Pos2<T>, size: Size2<T>) -> Self {
+    pub fn new(pos: impl Into<Pos2<T>>, size: impl Into<Size2<T>>) -> Self {
+        let (pos, size) = (pos.into(), size.into());
         Self {
             x: pos.x,
             y: pos.y,
@@ -157,6 +238,65 @@ impl<T> Rect2<T> {
             Pos2::new(self.x, self.y),
             Size2::new(self.width, self.height),
         )
+    }
+
+    /// (top left, bottom right).
+    pub fn corners(self) -> (Pos2<T>, Pos2<T>)
+    where
+        T: Add<Output = T> + Clone,
+    {
+        let (pos, size) = self.decompose();
+        (pos.clone(), pos + size)
+    }
+
+    pub const fn as_ref(&self) -> Rect2<&T> {
+        Rect2 {
+            x: &self.x,
+            y: &self.y,
+            width: &self.width,
+            height: &self.height,
+        }
+    }
+
+    pub fn translate(self, vec: impl Into<Vec2<T>>) -> Self
+    where
+        T: Add<Output = T>,
+    {
+        let (pos, size) = self.decompose();
+        Self::new(pos + vec.into(), size)
+    }
+
+    /// Returns `true` if `self` contains `rect`.  `rect` is considered
+    /// contained even if it touches the edge of `self`.
+    pub fn contains_rect(self, rect: Rect2<T>) -> bool
+    where
+        T: PartialOrd + Add<Output = T> + Clone,
+    {
+        let (tl, br) = rect.corners();
+        self.clone().contains_pos(tl) && self.contains_pos(br)
+    }
+
+    /// Returns `true` if `self` contains `pos`.  `pos` is considered contained
+    /// even if it touches the edge of `self`.
+    pub fn contains_pos(self, pos: impl Into<Pos2<T>>) -> bool
+    where
+        T: PartialOrd + Add<Output = T>,
+    {
+        let pos = pos.into();
+        pos.x >= self.x
+            && pos.y >= self.y
+            && pos.x <= (self.x + self.width)
+            && pos.y <= (self.y + self.height)
+    }
+}
+
+impl<T: Debug> Debug for Rect2<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (pos, size) = self.as_ref().decompose();
+        f.debug_struct(stringify!(Rect2))
+            .field("pos", &pos)
+            .field("size", &size)
+            .finish()
     }
 }
 
@@ -186,5 +326,57 @@ mod tests {
         assert_eq!(Size2::new(4, 2), [4, 2].into());
         assert_eq!(Size2::new(4, 2), (4, 2).into());
         assert_eq!(Size2::new(4, 2), Vec2::new(4, 2).into());
+    }
+
+    #[test]
+    fn size_contains_pos() {
+        assert!(Size2::new(4u16, 2).contains_pos([0, 0]));
+        assert!(Size2::new(4u16, 2).contains_pos([4, 0]));
+        assert!(Size2::new(4u16, 2).contains_pos([0, 2]));
+        assert!(Size2::new(4u16, 2).contains_pos([4, 2]));
+
+        assert!(Size2::new(4u16, 2).contains_pos([1, 1]));
+
+        assert!(!Size2::new(4u16, 2).contains_pos([5, 3]));
+        assert!(!Size2::new(4u16, 2).contains_pos([5, 0]));
+        assert!(!Size2::new(4u16, 2).contains_pos([0, 3]));
+    }
+
+    #[test]
+    fn size_contains_rect() {
+        assert!(Size2::new(6u16, 4).contains_rect(Rect2::new([0, 0], [6, 4])));
+        assert!(Size2::new(6u16, 4).contains_rect(Rect2::new([3, 0], [3, 4])));
+        assert!(Size2::new(6u16, 4).contains_rect(Rect2::new([0, 2], [4, 2])));
+        assert!(Size2::new(6u16, 4).contains_rect(Rect2::new([3, 2], [3, 2])));
+
+        assert!(Size2::new(6u16, 4).contains_rect(Rect2::new([1, 1], [1, 1])));
+
+        assert!(!Size2::new(6u16, 4).contains_rect(Rect2::new([1, 1], [6, 4])));
+        assert!(!Size2::new(6u16, 4).contains_rect(Rect2::new([1, 1], [6, 1])));
+        assert!(!Size2::new(6u16, 4).contains_rect(Rect2::new([1, 1], [1, 4])));
+
+        assert!(!Size2::new(6u16, 4).contains_rect(Rect2::new([7, 5], [1, 1])));
+        assert!(!Size2::new(6u16, 4).contains_rect(Rect2::new([1, 5], [1, 1])));
+        assert!(!Size2::new(6u16, 4).contains_rect(Rect2::new([7, 1], [1, 1])));
+    }
+
+    #[test]
+    fn rect_contains_pos() {
+        assert!(Rect2::new([4u16, 2], [6, 4]).contains_pos([4, 2]));
+        assert!(Rect2::new([4u16, 2], [6, 4]).contains_pos([10, 2]));
+        assert!(Rect2::new([4u16, 2], [6, 4]).contains_pos([4, 6]));
+        assert!(Rect2::new([4u16, 2], [6, 4]).contains_pos([10, 6]));
+
+        assert!(Rect2::new([4u16, 2], [6, 4]).contains_pos([8, 4]));
+
+        assert!(!Rect2::new([4u16, 2], [6, 4]).contains_pos([3, 1]));
+        assert!(!Rect2::new([4u16, 2], [6, 4]).contains_pos([11, 1]));
+        assert!(!Rect2::new([4u16, 2], [6, 4]).contains_pos([3, 7]));
+        assert!(!Rect2::new([4u16, 2], [6, 4]).contains_pos([11, 7]));
+
+        assert!(!Rect2::new([4u16, 2], [6, 4]).contains_pos([3, 4]));
+        assert!(!Rect2::new([4u16, 2], [6, 4]).contains_pos([11, 4]));
+        assert!(!Rect2::new([4u16, 2], [6, 4]).contains_pos([8, 1]));
+        assert!(!Rect2::new([4u16, 2], [6, 4]).contains_pos([8, 7]));
     }
 }
