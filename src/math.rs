@@ -6,22 +6,22 @@ use std::{
 /// A two-dimensional vector.
 #[derive(Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Vec2<T> {
-    x: T,
-    y: T,
+    pub x: T,
+    pub y: T,
 }
 
 /// A position in 2d space.
 #[derive(Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Pos2<T> {
-    x: T,
-    y: T,
+    pub x: T,
+    pub y: T,
 }
 
 /// A two-dimensional size.
 #[derive(Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Size2<T> {
-    width: T,
-    height: T,
+    pub width: T,
+    pub height: T,
 }
 
 macro_rules! common_methods {
@@ -208,10 +208,10 @@ formatting!(
 /// A rectangle defined by it's top left point and it's extents
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Rect2<T> {
-    x: T,
-    y: T,
-    width: T,
-    height: T,
+    pub x: T,
+    pub y: T,
+    pub width: T,
+    pub height: T,
 }
 
 impl<T> Rect2<T> {
@@ -264,6 +264,14 @@ impl<T> Rect2<T> {
     {
         let (pos, size) = self.decompose();
         Self::new(pos + vec.into(), size)
+    }
+
+    pub fn translate_sub(self, vec: impl Into<Vec2<T>>) -> Self
+    where
+        T: Sub<Output = T>,
+    {
+        let (pos, size) = self.decompose();
+        Self::new(pos - vec.into(), size)
     }
 
     /// Returns `true` if `self` contains `rect`.  `rect` is considered

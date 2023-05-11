@@ -5,9 +5,15 @@ use crate::{
     writer::TerminalWriter,
 };
 
+pub mod decoration;
+pub mod style;
+
 /// A widget in a tui app, such as text.
 pub trait Widget<W: TerminalWriter> {
     /// Renders this widget into the provided [`TerminalWriter`].
+    ///
+    /// `size` should contain `overdrawn`.  If it doesn't, widgets may not
+    /// render correctly.
     ///
     /// # Implementation Notes
     ///

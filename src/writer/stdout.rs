@@ -1,13 +1,13 @@
 use std::{
-    io::{self, StdoutLock, Write},
+    io::{self, BufWriter, StdoutLock, Write},
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use crossterm::{queue, terminal};
+use crossterm::{cursor, queue, style, terminal};
 
 use crate::{
-    math::{Rect2, Size2, Vec2},
-    widget::{RenderResult, Widget},
+    math::{Pos2, Rect2, Size2, Vec2},
+    widget::{style::Color, RenderResult, Widget},
 };
 
 use super::TerminalWriter;
@@ -18,7 +18,7 @@ static WRITER_RUNNING: AtomicBool = AtomicBool::new(false);
 /// Terminal writer outputting to stdout.  Only one may exist at a time
 #[derive(Debug)]
 pub struct StdoutWriter {
-    out: StdoutLock<'static>,
+    out: BufWriter<StdoutLock<'static>>,
 
     offset: Vec2<u16>,
 }
@@ -37,7 +37,7 @@ impl StdoutWriter {
             panic!("Only one `StdoutWriter` can exist at a time!")
         }
         Self {
-            out: io::stdout().lock(),
+            out: BufWriter::new(io::stdout().lock()),
             offset: Vec2::splat(0),
         }
     }
@@ -52,9 +52,13 @@ impl Drop for StdoutWriter {
 }
 
 impl TerminalWriter for StdoutWriter {
+    /* Size */
+
     fn term_size(&self) -> io::Result<Size2<u16>> {
         terminal::size().map(Into::into)
     }
+
+    /* Screen */
 
     fn enter_alternate_screen(&mut self) -> io::Result<&mut Self> {
         queue!(self.out, terminal::EnterAlternateScreen).map(|()| self)
@@ -62,6 +66,60 @@ impl TerminalWriter for StdoutWriter {
 
     fn leave_alternate_screen(&mut self) -> io::Result<&mut Self> {
         queue!(self.out, terminal::LeaveAlternateScreen).map(|()| self)
+    }
+
+    /* Cursor position */
+
+    fn cursor_to(&mut self, pos: impl Into<Pos2<u16>>) -> io::Result<&mut Self> {
+        let pos = pos.into() + self.offset;
+        queue!(self.out, cursor::MoveTo(pos.x, pos.y)).map(|()| self)
+    }
+
+    fn cursor_to_column(&mut self, column: u16) -> io::Result<&mut Self> {
+        queue!(self.out, cursor::MoveToColumn(column + self.offset.x)).map(|()| self)
+    }
+
+    fn cursor_to_row(&mut self, row: u16) -> io::Result<&mut Self> {
+        queue!(self.out, cursor::MoveToRow(row + self.offset.y)).map(|()| self)
+    }
+
+    /* Cursor move */
+
+    fn cursor_left(&mut self, distance: u16) -> io::Result<&mut Self> {
+        queue!(self.out, cursor::MoveLeft(distance)).map(|()| self)
+    }
+
+    fn cursor_right(&mut self, distance: u16) -> io::Result<&mut Self> {
+        queue!(self.out, cursor::MoveRight(distance)).map(|()| self)
+    }
+
+    fn cursor_up(&mut self, distance: u16) -> io::Result<&mut Self> {
+        queue!(self.out, cursor::MoveUp(distance)).map(|()| self)
+    }
+
+    fn cursor_down(&mut self, distance: u16) -> io::Result<&mut Self> {
+        queue!(self.out, cursor::MoveDown(distance)).map(|()| self)
+    }
+
+    /* Print */
+
+    fn write_char(&mut self, ch: char) -> io::Result<&mut Self> {
+        self.out.write_all(ch.encode_utf8(&mut [0; 4]).as_bytes())?;
+        Ok(self)
+    }
+
+    fn print(&mut self, arg: impl std::fmt::Display) -> io::Result<&mut Self> {
+        queue!(self.out, style::Print(arg)).map(|()| self)
+    }
+
+    /* Color */
+
+    fn set_foreground_color(&mut self, color: Color) -> io::Result<&mut Self> {
+        queue!(self.out, style::SetForegroundColor(color)).map(|()| self)
+    }
+
+    fn set_background_color(&mut self, color: Color) -> io::Result<&mut Self> {
+        queue!(self.out, style::SetBackgroundColor(color)).map(|()| self)
     }
 
     fn add_widget<W: Widget<Self>>(
@@ -72,7 +130,7 @@ impl TerminalWriter for StdoutWriter {
     ) -> io::Result<RenderResult> {
         let old_offset = self.offset;
         self.offset = rect.pos().to_vec();
-        let overdrawn = overdrawn.map(|overdrawn| overdrawn.translate(self.offset));
+        let overdrawn = overdrawn.map(|overdrawn| overdrawn.translate_sub(self.offset));
         let result = widget.render(self, rect.size(), overdrawn);
         self.offset = old_offset;
         result

@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 bitflags = "2.2.1"
 crossterm = "0.26.1"
+unicode-width = "0.1.10"
 
 [dev-dependencies]
 serial_test = "2.0.0"
