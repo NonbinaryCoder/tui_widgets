@@ -106,26 +106,22 @@ impl<T> Size2<T> {
         self.width * self.height
     }
 
-    /// Returns `true` if `self` contains `rect`.  `rect` is considered
-    /// contained even if it touches the edge of `self`.
     pub fn contains_rect(self, rect: Rect2<T>) -> bool
     where
         T: PartialOrd + Add<Output = T>,
     {
-        rect.x <= self.width
+        rect.x < self.width
             && rect.y < self.height
             && (rect.x + rect.width) <= self.width
             && (rect.y + rect.height) <= self.height
     }
 
-    /// Returns `true` if `self` contains `pos`.  `pos` is considered contained
-    /// even if it touches the edge of `self`.
     pub fn contains_pos(self, pos: impl Into<Pos2<T>>) -> bool
     where
         T: PartialOrd,
     {
         let pos = pos.into();
-        pos.x <= self.width && pos.y <= self.height
+        pos.x < self.width && pos.y < self.height
     }
 }
 
@@ -151,7 +147,7 @@ macro_rules! vec_ops_inner {
         )+
     };
 }
-vec_ops!([Vec2 op Vec2], [Pos2 op Vec2], [Size2 op Vec2], [Pos2 op Size2]);
+vec_ops!([Vec2 op Vec2], [Pos2 op Pos2], [Pos2 op Vec2], [Size2 op Vec2], [Pos2 op Size2]);
 
 macro_rules! conversions {
     ($ty:ident into $($from:ident),+) => {
@@ -205,7 +201,7 @@ formatting!(
     Size2: "", "x", ""
 );
 
-/// A rectangle defined by it's top left point and it's extents
+/// A rectangle defined by it's top left point and it's extents.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Rect2<T> {
     pub x: T,
@@ -274,18 +270,18 @@ impl<T> Rect2<T> {
         Self::new(pos - vec.into(), size)
     }
 
-    /// Returns `true` if `self` contains `rect`.  `rect` is considered
-    /// contained even if it touches the edge of `self`.
     pub fn contains_rect(self, rect: Rect2<T>) -> bool
     where
-        T: PartialOrd + Add<Output = T> + Clone,
+        T: PartialOrd + Add<Output = T> + Copy,
     {
-        let (tl, br) = rect.corners();
-        self.clone().contains_pos(tl) && self.contains_pos(br)
+        rect.x >= self.x
+            && rect.y >= self.y
+            && rect.x < (self.x + self.width)
+            && rect.y < (self.x + self.height)
+            && (rect.x + rect.width) <= (self.x + self.width)
+            && (rect.y + rect.height) <= (self.y + self.height)
     }
 
-    /// Returns `true` if `self` contains `pos`.  `pos` is considered contained
-    /// even if it touches the edge of `self`.
     pub fn contains_pos(self, pos: impl Into<Pos2<T>>) -> bool
     where
         T: PartialOrd + Add<Output = T>,
@@ -293,8 +289,8 @@ impl<T> Rect2<T> {
         let pos = pos.into();
         pos.x >= self.x
             && pos.y >= self.y
-            && pos.x <= (self.x + self.width)
-            && pos.y <= (self.y + self.height)
+            && pos.x < (self.x + self.width)
+            && pos.y < (self.y + self.height)
     }
 }
 
@@ -338,53 +334,92 @@ mod tests {
 
     #[test]
     fn size_contains_pos() {
-        assert!(Size2::new(4u16, 2).contains_pos([0, 0]));
-        assert!(Size2::new(4u16, 2).contains_pos([4, 0]));
-        assert!(Size2::new(4u16, 2).contains_pos([0, 2]));
-        assert!(Size2::new(4u16, 2).contains_pos([4, 2]));
-
-        assert!(Size2::new(4u16, 2).contains_pos([1, 1]));
-
-        assert!(!Size2::new(4u16, 2).contains_pos([5, 3]));
-        assert!(!Size2::new(4u16, 2).contains_pos([5, 0]));
-        assert!(!Size2::new(4u16, 2).contains_pos([0, 3]));
+        let size = Size2::new(5, 3);
+        let contained = ["yyyyynn", "yyyyynn", "yyyyynn", "nnnnnnn", "nnnnnnn"];
+        for (y, row) in contained.into_iter().enumerate() {
+            for (x, ch) in row.chars().enumerate() {
+                match ch {
+                    'y' => assert!(size.contains_pos([x, y])),
+                    'n' => assert!(!size.contains_pos([x, y])),
+                    _ => unreachable!(),
+                }
+            }
+        }
     }
 
     #[test]
     fn size_contains_rect() {
-        assert!(Size2::new(6u16, 4).contains_rect(Rect2::new([0, 0], [6, 4])));
-        assert!(Size2::new(6u16, 4).contains_rect(Rect2::new([3, 0], [3, 4])));
-        assert!(Size2::new(6u16, 4).contains_rect(Rect2::new([0, 2], [4, 2])));
-        assert!(Size2::new(6u16, 4).contains_rect(Rect2::new([3, 2], [3, 2])));
-
-        assert!(Size2::new(6u16, 4).contains_rect(Rect2::new([1, 1], [1, 1])));
-
-        assert!(!Size2::new(6u16, 4).contains_rect(Rect2::new([1, 1], [6, 4])));
-        assert!(!Size2::new(6u16, 4).contains_rect(Rect2::new([1, 1], [6, 1])));
-        assert!(!Size2::new(6u16, 4).contains_rect(Rect2::new([1, 1], [1, 4])));
-
-        assert!(!Size2::new(6u16, 4).contains_rect(Rect2::new([7, 5], [1, 1])));
-        assert!(!Size2::new(6u16, 4).contains_rect(Rect2::new([1, 5], [1, 1])));
-        assert!(!Size2::new(6u16, 4).contains_rect(Rect2::new([7, 1], [1, 1])));
+        let size = Size2::new(9, 5);
+        let rect_size = Size2::new(3, 2);
+        let contained = [
+            "yyyyyyynnnnn",
+            "yyyyyyynnnnn",
+            "yyyyyyynnnnn",
+            "yyyyyyynnnnn",
+            "nnnnnnnnnnnn",
+            "nnnnnnnnnnnn",
+            "nnnnnnnnnnnn",
+            "nnnnnnnnnnnn",
+        ];
+        for (y, row) in contained.into_iter().enumerate() {
+            for (x, ch) in row.chars().enumerate() {
+                match ch {
+                    'y' => assert!(size.contains_rect(Rect2::new([x, y], rect_size))),
+                    'n' => assert!(!size.contains_rect(Rect2::new([x, y], rect_size))),
+                    _ => unreachable!(),
+                }
+            }
+        }
     }
 
     #[test]
     fn rect_contains_pos() {
-        assert!(Rect2::new([4u16, 2], [6, 4]).contains_pos([4, 2]));
-        assert!(Rect2::new([4u16, 2], [6, 4]).contains_pos([10, 2]));
-        assert!(Rect2::new([4u16, 2], [6, 4]).contains_pos([4, 6]));
-        assert!(Rect2::new([4u16, 2], [6, 4]).contains_pos([10, 6]));
+        let rect = Rect2::new([3, 2], [4, 5]);
+        let contained = [
+            "nnnnnnnnnn",
+            "nnnnnnnnnn",
+            "nnnyyyynnn",
+            "nnnyyyynnn",
+            "nnnyyyynnn",
+            "nnnyyyynnn",
+            "nnnyyyynnn",
+            "nnnnnnnnnn",
+            "nnnnnnnnnn",
+        ];
+        for (y, row) in contained.into_iter().enumerate() {
+            for (x, ch) in row.chars().enumerate() {
+                match ch {
+                    'y' => assert!(rect.contains_pos([x, y])),
+                    'n' => assert!(!rect.contains_pos([x, y])),
+                    _ => unreachable!(),
+                }
+            }
+        }
+    }
 
-        assert!(Rect2::new([4u16, 2], [6, 4]).contains_pos([8, 4]));
-
-        assert!(!Rect2::new([4u16, 2], [6, 4]).contains_pos([3, 1]));
-        assert!(!Rect2::new([4u16, 2], [6, 4]).contains_pos([11, 1]));
-        assert!(!Rect2::new([4u16, 2], [6, 4]).contains_pos([3, 7]));
-        assert!(!Rect2::new([4u16, 2], [6, 4]).contains_pos([11, 7]));
-
-        assert!(!Rect2::new([4u16, 2], [6, 4]).contains_pos([3, 4]));
-        assert!(!Rect2::new([4u16, 2], [6, 4]).contains_pos([11, 4]));
-        assert!(!Rect2::new([4u16, 2], [6, 4]).contains_pos([8, 1]));
-        assert!(!Rect2::new([4u16, 2], [6, 4]).contains_pos([8, 7]));
+    #[test]
+    fn rect_contains_rect() {
+        let rect = Rect2::new([3, 2], [7, 5]);
+        let test_size = Size2::new(4, 3);
+        let contained = [
+            "nnnnnnnnnnnn",
+            "nnnnnnnnnnnn",
+            "nnnyyyynnnnn",
+            "nnnyyyynnnnn",
+            "nnnyyyynnnnn",
+            "nnnnnnnnnnnn",
+            "nnnnnnnnnnnn",
+            "nnnnnnnnnnnn",
+            "nnnnnnnnnnnn",
+        ];
+        for (y, row) in contained.into_iter().enumerate() {
+            for (x, ch) in row.chars().enumerate() {
+                match ch {
+                    'y' => assert!(rect.contains_rect(Rect2::new([x, y], test_size))),
+                    'n' => assert!(!rect.contains_rect(Rect2::new([x, y], test_size))),
+                    _ => unreachable!(),
+                }
+            }
+        }
     }
 }

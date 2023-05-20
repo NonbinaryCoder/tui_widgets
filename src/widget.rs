@@ -1,40 +1,28 @@
-use std::io;
-
 use crate::{
     math::{Rect2, Size2},
-    writer::TerminalWriter,
+    terminal::TerminalWindow,
 };
 
-pub mod decoration;
 pub mod style;
 
-/// A widget in a tui app, such as text.
-pub trait Widget<W: TerminalWriter> {
+/// A widget in a tui app, for example text.
+pub trait Widget {
     /// Renders this widget into the provided [`TerminalWriter`].
     ///
-    /// `size` should contain `overdrawn`.  If it doesn't, widgets may not
-    /// render correctly.
+    /// `overdrawn` should be contained by the terminal window.  If it doesn't,
+    /// widgets may not render correctly.
     ///
     /// # Implementation Notes
     ///
-    /// The writer keeps track of the offset of the widget, so all widgets can
+    /// The window keeps track of the offset of the widget, so all widgets can
     /// assume they are at (0, 0).
     ///
-    /// Nothing should be written outside of `size`.
+    /// Nothing should be written outside of `terminal.size()`.
     ///
     /// If `overdrawn` is set, the area it covers has been changed and needs to
     /// be rewritten.  The widget can assume anything outside of the overdrawn
     /// area hasn't changed.  If `overdrawn` is not set, nothing changed.
-    ///
-    /// # Errors
-    ///
-    /// This function will return an error if writing fails.
-    fn render(
-        &mut self,
-        writer: &mut W,
-        size: Size2<u16>,
-        overdrawn: Option<Rect2<u16>>,
-    ) -> io::Result<RenderResult>;
+    fn render(&mut self, terminal: TerminalWindow, overdrawn: Option<Rect2<u16>>) -> RenderResult;
 
     /// What size this widget wants to be.
     ///
@@ -45,14 +33,9 @@ pub trait Widget<W: TerminalWriter> {
     }
 }
 
-impl<W: TerminalWriter> Widget<W> for Box<dyn Widget<W>> {
-    fn render(
-        &mut self,
-        writer: &mut W,
-        size: Size2<u16>,
-        overdrawn: Option<Rect2<u16>>,
-    ) -> io::Result<RenderResult> {
-        (**self).render(writer, size, overdrawn)
+impl Widget for Box<dyn Widget> {
+    fn render(&mut self, terminal: TerminalWindow, overdrawn: Option<Rect2<u16>>) -> RenderResult {
+        (**self).render(terminal, overdrawn)
     }
 
     fn desired_size(&self) -> Size2<Range<u16>> {
@@ -60,29 +43,22 @@ impl<W: TerminalWriter> Widget<W> for Box<dyn Widget<W>> {
     }
 }
 
-impl<W: TerminalWriter> Widget<W> for () {
+impl Widget for () {
     fn render(
         &mut self,
-        _writer: &mut W,
-        _size: Size2<u16>,
+        _terminal: TerminalWindow,
         _overdrawn: Option<Rect2<u16>>,
-    ) -> io::Result<RenderResult> {
-        Ok(RenderResult::NOTHING_DRAWN)
+    ) -> RenderResult {
+        RenderResult::NOTHING_DRAWN
     }
 }
 
-impl<F, W> Widget<W> for F
+impl<F> Widget for F
 where
-    F: FnMut(&mut W, Size2<u16>, Option<Rect2<u16>>) -> io::Result<RenderResult>,
-    W: TerminalWriter,
+    F: FnMut(TerminalWindow, Option<Rect2<u16>>) -> RenderResult,
 {
-    fn render(
-        &mut self,
-        writer: &mut W,
-        size: Size2<u16>,
-        overdrawn: Option<Rect2<u16>>,
-    ) -> io::Result<RenderResult> {
-        self(writer, size, overdrawn)
+    fn render(&mut self, terminal: TerminalWindow, overdrawn: Option<Rect2<u16>>) -> RenderResult {
+        self(terminal, overdrawn)
     }
 }
 
