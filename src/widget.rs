@@ -1,7 +1,4 @@
-use crate::{
-    math::{Rect2, Size2},
-    terminal::TerminalWindow,
-};
+use crate::{math::Size2, terminal::TerminalWindow};
 
 pub mod style;
 
@@ -19,14 +16,12 @@ pub trait Widget {
     ///
     /// Nothing should be written outside of `terminal.size()`.
     ///
-    /// If `overdrawn` is set, the area it covers has been changed and needs to
-    /// be rewritten.  The widget can assume anything outside of the overdrawn
-    /// area hasn't changed.  If `overdrawn` is not set, nothing changed.
-    fn render(&mut self, terminal: TerminalWindow, overdrawn: Option<Rect2<u16>>) -> RenderResult;
+    /// The terminal keeps track of what area of it has been overwritten
+    fn render(&mut self, terminal: TerminalWindow);
 
     /// What size this widget wants to be.
     ///
-    /// Note that widgets can be rendered with a size that is smaller or larger
+    /// Note that widgets may be rendered with a size that is smaller or larger
     /// than requested.
     fn desired_size(&self) -> Size2<Range<u16>> {
         Size2::splat(Range::Any)
@@ -34,8 +29,8 @@ pub trait Widget {
 }
 
 impl Widget for Box<dyn Widget> {
-    fn render(&mut self, terminal: TerminalWindow, overdrawn: Option<Rect2<u16>>) -> RenderResult {
-        (**self).render(terminal, overdrawn)
+    fn render(&mut self, terminal: TerminalWindow) {
+        (**self).render(terminal)
     }
 
     fn desired_size(&self) -> Size2<Range<u16>> {
@@ -44,30 +39,16 @@ impl Widget for Box<dyn Widget> {
 }
 
 impl Widget for () {
-    fn render(
-        &mut self,
-        _terminal: TerminalWindow,
-        _overdrawn: Option<Rect2<u16>>,
-    ) -> RenderResult {
-        RenderResult::NOTHING_DRAWN
-    }
+    fn render(&mut self, _terminal: TerminalWindow) {}
 }
 
 impl<F> Widget for F
 where
-    F: FnMut(TerminalWindow, Option<Rect2<u16>>) -> RenderResult,
+    F: FnMut(TerminalWindow),
 {
-    fn render(&mut self, terminal: TerminalWindow, overdrawn: Option<Rect2<u16>>) -> RenderResult {
-        self(terminal, overdrawn)
+    fn render(&mut self, terminal: TerminalWindow) {
+        self(terminal)
     }
-}
-
-pub struct RenderResult {
-    overdrawn: Option<Rect2<u16>>,
-}
-
-impl RenderResult {
-    pub const NOTHING_DRAWN: Self = Self { overdrawn: None };
 }
 
 /// A size range.  Values are inclusive.
