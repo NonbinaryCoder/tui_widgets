@@ -6,7 +6,7 @@ use std::{
 use unicode_width::UnicodeWidthChar;
 
 use crate::{
-    math::{Pos2, Rect2, Size2},
+    math::{Box2, Pos2, Size2},
     widget::style::{Color, Colors, Formatting},
 };
 
@@ -25,36 +25,17 @@ impl Terminal {
         }
     }
 
+    pub fn edit(&mut self) -> TerminalWindow<'_> {
+        TerminalWindow {
+            area: Box2::new([0, 0], self.size.to_vec()),
+            overdrawn: None,
+            term: self,
+        }
+    }
+
     fn cell_index(&self, pos: Pos2<u16>) -> usize {
         let pos = pos.map_into::<usize>();
         pos.x + pos.y * self.size.width as usize
-    }
-
-    pub fn set_cell(
-        &mut self,
-        pos: impl Into<Pos2<u16>>,
-        ch: impl Into<CharType>,
-        fmt: impl Into<Formatting>,
-    ) {
-        let ch = ch.into();
-        let cell = Cell {
-            ch: ch.char(),
-            fmt: fmt.into(),
-        };
-        let pos = pos.into();
-        let cell_index = self.cell_index(pos);
-        match ch {
-            CharType::SingleWidth(_) => {
-                self.cells[cell_index] = cell;
-            }
-            CharType::DoubleWidth(_) => {
-                if pos.x < self.size.width {
-                    self.cells[cell_index] = cell;
-                    self.cells[cell_index + 1].ch = ' ';
-                }
-            }
-            CharType::Other(_) => {}
-        }
     }
 
     pub fn rows(&self) -> Rows<'_> {
@@ -287,22 +268,40 @@ impl<'a> FusedIterator for Row<'a> {}
 
 #[derive(Debug)]
 pub struct TerminalWindow<'a> {
-    inner: &'a mut Terminal,
-    area: Rect2<u16>,
+    area: Box2<u16>,
+    overdrawn: Option<Box2<u16>>,
+    term: &'a mut Terminal,
 }
 
 impl<'a> TerminalWindow<'a> {
     fn offset_pos(&self, pos: Pos2<u16>) -> Pos2<u16> {
+        let size = self.size();
         debug_assert!(
-            self.area.size().contains_pos(pos),
-            "Size of terminal window ({}) should contain pos ({pos})",
-            self.area.size()
+            size.contains_pos(pos),
+            "Size of terminal window ({size}) should contain pos ({pos})",
         );
-        pos + self.area.pos()
+        pos + self.area.min
+    }
+
+    fn cell_index(&self, pos: Pos2<u16>) -> usize {
+        self.term.cell_index(self.offset_pos(pos))
     }
 
     pub fn size(&self) -> Size2<u16> {
         self.area.size()
+    }
+
+    pub fn overdrawn(&self) -> Option<Box2<u16>> {
+        self.overdrawn
+    }
+
+    fn mark_overdrawn(&mut self, cell: Pos2<u16>) {
+        self.overdrawn = Some(self.overdrawn.map_or(cell.into(), |o| o.contain_pos(cell)))
+    }
+
+    fn mark_overdrawn_double_width(&mut self, cell: Pos2<u16>) {
+        let b = Box2::new(cell, cell + Pos2::new(1, 0));
+        self.overdrawn = Some(self.overdrawn.map_or(b, |o| o.contain_box(b)))
     }
 
     pub fn set_cell(
@@ -311,8 +310,26 @@ impl<'a> TerminalWindow<'a> {
         ch: impl Into<CharType>,
         fmt: impl Into<Formatting>,
     ) {
-        self.inner
-            .set_cell(self.offset_pos(pos.into()), ch.into(), fmt.into());
+        let pos = pos.into();
+        let ch = ch.into();
+        let cell = Cell {
+            ch: ch.char(),
+            fmt: fmt.into(),
+        };
+        let cell_index = self.cell_index(pos);
+        match ch {
+            CharType::SingleWidth(_) => {
+                self.term.cells[cell_index] = cell;
+                self.mark_overdrawn(pos);
+            }
+            CharType::DoubleWidth(_) => {
+                debug_assert!(pos.x < self.size().width);
+                self.term.cells[cell_index] = cell;
+                self.term.cells[cell_index + 1] = cell.ch(' ');
+                self.mark_overdrawn_double_width(pos);
+            }
+            CharType::Other(_) => {}
+        }
     }
 }
 
@@ -570,8 +587,15 @@ mod tests {
     #[test]
     fn terminal_set_cell() {
         let mut term = Terminal::new([4, 2]);
-        term.set_cell([1, 0], 'a', ());
-        term.set_cell([1, 1], '✨', ());
+
+        let mut window = term.edit();
+        window.set_cell([1, 0], 'a', ());
+        assert_eq!(window.overdrawn(), Some(Box2::from(Pos2::new(1, 0))));
+
+        let mut window = term.edit();
+        window.set_cell([1, 1], '✨', ());
+        assert_eq!(window.overdrawn(), Some(Box2::new([1, 1], [2, 1])));
+
         term.assert_chars_equal([" a  ", " ✨ "]);
     }
 }

@@ -210,6 +210,13 @@ pub struct Rect2<T> {
     pub height: T,
 }
 
+/// A rectangle defined by it's top left and bottom right points
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Box2<T> {
+    pub min: Pos2<T>,
+    pub max: Pos2<T>,
+}
+
 impl<T> Rect2<T> {
     pub fn new(pos: impl Into<Pos2<T>>, size: impl Into<Size2<T>>) -> Self {
         let (pos, size) = (pos.into(), size.into());
@@ -236,13 +243,15 @@ impl<T> Rect2<T> {
         )
     }
 
-    /// (top left, bottom right).
-    pub fn corners(self) -> (Pos2<T>, Pos2<T>)
+    pub fn to_box(self) -> Box2<T>
     where
         T: Add<Output = T> + Clone,
     {
         let (pos, size) = self.decompose();
-        (pos.clone(), pos + size)
+        Box2 {
+            min: pos.clone(),
+            max: pos + size,
+        }
     }
 
     pub const fn as_ref(&self) -> Rect2<&T> {
@@ -301,6 +310,52 @@ impl<T: Debug> Debug for Rect2<T> {
             .field("pos", &pos)
             .field("size", &size)
             .finish()
+    }
+}
+
+impl<T> Box2<T> {
+    pub fn new(min: impl Into<Pos2<T>>, max: impl Into<Pos2<T>>) -> Box2<T> {
+        Self {
+            min: min.into(),
+            max: max.into(),
+        }
+    }
+
+    pub fn size(self) -> Size2<T::Output>
+    where
+        T: Sub<T>,
+    {
+        (self.max - self.min).to_vec().to_size()
+    }
+
+    pub fn contain_pos(self, pos: impl Into<Pos2<T>>) -> Self
+    where
+        T: Ord + Clone,
+    {
+        let pos = pos.into();
+        Self::new(
+            [self.min.x.min(pos.x.clone()), self.min.y.min(pos.y.clone())],
+            [self.max.x.max(pos.x), self.max.y.max(pos.y)],
+        )
+    }
+
+    pub fn contain_box(self, b: Box2<T>) -> Self
+    where
+        T: Ord,
+    {
+        Self::new(
+            [self.min.x.min(b.min.x), self.min.y.min(b.min.y)],
+            [self.max.x.max(b.max.x), self.max.y.max(b.max.y)],
+        )
+    }
+}
+
+impl<T: Clone> From<Pos2<T>> for Box2<T> {
+    fn from(value: Pos2<T>) -> Self {
+        Self {
+            min: value.clone(),
+            max: value,
+        }
     }
 }
 
@@ -421,5 +476,12 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn box_contain_pos() {
+        let b = Box2::from(Pos2::new(4u16, 8));
+        assert_eq!(b.contain_pos([2, 1]), Box2::new([2, 1], [4, 8]));
+        assert_eq!(b.contain_pos([200, 40]), Box2::new([4, 8], [200, 40]));
     }
 }
