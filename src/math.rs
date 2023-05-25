@@ -321,13 +321,6 @@ impl<T> Box2<T> {
         }
     }
 
-    pub fn size(self) -> Size2<T::Output>
-    where
-        T: Sub<T>,
-    {
-        (self.max - self.min).to_vec().to_size()
-    }
-
     pub fn contain_pos(self, pos: impl Into<Pos2<T>>) -> Self
     where
         T: Ord + Clone,
@@ -347,6 +340,36 @@ impl<T> Box2<T> {
             [self.min.x.min(b.min.x), self.min.y.min(b.min.y)],
             [self.max.x.max(b.max.x), self.max.y.max(b.max.y)],
         )
+    }
+
+    pub fn contains_pos(self, pos: Pos2<T>) -> bool
+    where
+        T: PartialOrd,
+    {
+        self.min.x <= pos.x && self.min.y <= pos.y && self.max.x >= pos.x && self.max.y >= pos.y
+    }
+
+    pub fn contains_box(self, other: Box2<T>) -> bool
+    where
+        T: PartialOrd + Clone,
+    {
+        self.clone().contains_pos(other.min) && self.contains_pos(other.max)
+    }
+
+    pub fn intersection(self, other: Self) -> Option<Self>
+    where
+        T: Ord + Copy,
+    {
+        fn intersection<T: Ord + Copy>(a_min: T, a_max: T, b_min: T, b_max: T) -> Option<[T; 2]> {
+            if a_max < b_min || b_max < a_min {
+                None
+            } else {
+                Some([a_min.max(b_min), a_max.min(b_max)])
+            }
+        }
+        let [min_x, max_x] = intersection(self.min.x, self.max.x, other.min.x, other.max.x)?;
+        let [min_y, max_y] = intersection(self.min.y, self.max.y, other.min.y, other.max.y)?;
+        Some(Self::new([min_x, min_y], [max_x, max_y]))
     }
 }
 
@@ -483,5 +506,30 @@ mod tests {
         let b = Box2::from(Pos2::new(4u16, 8));
         assert_eq!(b.contain_pos([2, 1]), Box2::new([2, 1], [4, 8]));
         assert_eq!(b.contain_pos([200, 40]), Box2::new([4, 8], [200, 40]));
+    }
+
+    #[test]
+    fn box_intersection() {
+        let b = Box2::new([4u16, 5], [8, 12]);
+        assert_eq!(
+            b.intersection(Box2::new([0, 0], [6, 6])),
+            Some(Box2::new([4, 5], [6, 6])),
+        );
+        assert_eq!(
+            b.intersection(Box2::new([6, 0], [12, 6])),
+            Some(Box2::new([6, 5], [8, 6])),
+        );
+        assert_eq!(
+            b.intersection(Box2::new([0, 7], [6, 13])),
+            Some(Box2::new([4, 7], [6, 12])),
+        );
+        assert_eq!(
+            b.intersection(Box2::new([6, 7], [12, 13])),
+            Some(Box2::new([6, 7], [8, 12])),
+        );
+        assert_eq!(
+            b.intersection(Box2::new([5, 6], [7, 11])),
+            Some(Box2::new([5, 6], [7, 11])),
+        );
     }
 }

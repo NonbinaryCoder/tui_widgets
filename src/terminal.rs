@@ -6,7 +6,7 @@ use std::{
 use unicode_width::UnicodeWidthChar;
 
 use crate::{
-    math::{Box2, Pos2, Size2},
+    math::{Box2, Pos2, Size2, Vec2},
     widget::style::{Color, Colors, Formatting},
 };
 
@@ -63,21 +63,12 @@ impl Terminal {
         let mut mismatch = None;
         for (y, (row, template_row)) in iter::zip(self.rows(), template).enumerate() {
             let mut templates_iter = row_elements(template_row);
-            let mut template_count = 0;
             for (x, (cell, template)) in iter::zip(row.clone(), templates_iter.by_ref()).enumerate()
             {
-                template_count += 1;
                 if mismatch.is_none() && !(cell_to_template(cell) == template) {
                     mismatch = Some(Pos2::new(x, y));
                 }
             }
-            template_count += templates_iter.count();
-            let cell_count = row.count();
-            assert_eq!(
-                cell_count, template_count,
-                "Number of cells ({cell_count}) should match number of templates \
-                ({template_count})"
-            );
         }
         if let Some(Pos2 { x, y }) = mismatch {
             eprintln!("Template:");
@@ -288,45 +279,130 @@ impl<'a> TerminalWindow<'a> {
     }
 
     pub fn size(&self) -> Size2<u16> {
-        self.area.size()
+        (self.area.max.to_vec() + Vec2::splat(1) - self.area.min.to_vec()).to_size()
     }
 
     pub fn overdrawn(&self) -> Option<Box2<u16>> {
         self.overdrawn
     }
 
-    fn mark_overdrawn(&mut self, cell: Pos2<u16>) {
-        self.overdrawn = Some(self.overdrawn.map_or(cell.into(), |o| o.contain_pos(cell)))
+    fn mark_cell_overdrawn(&mut self, cell: Pos2<u16>) {
+        debug_assert!(self.area.contains_pos(cell));
+        self.overdrawn = Some(self.overdrawn.map_or(cell.into(), |o| o.contain_pos(cell)));
     }
 
-    fn mark_overdrawn_double_width(&mut self, cell: Pos2<u16>) {
-        let b = Box2::new(cell, cell + Pos2::new(1, 0));
-        self.overdrawn = Some(self.overdrawn.map_or(b, |o| o.contain_box(b)))
+    fn mark_double_width_cell_overdrawn(&mut self, cell: Pos2<u16>) {
+        self.mark_area_overdrawn(Box2::new(cell, cell + Pos2::new(1, 0)));
     }
 
-    pub fn set_cell(
-        &mut self,
-        pos: impl Into<Pos2<u16>>,
-        ch: impl Into<CharType>,
-        fmt: impl Into<Formatting>,
-    ) {
+    fn mark_area_overdrawn(&mut self, area: Box2<u16>) {
+        debug_assert!(self.area.contains_box(area));
+        self.overdrawn = Some(self.overdrawn.map_or(area, |o| o.contain_box(area)));
+    }
+
+    pub fn set_cell(&mut self, pos: impl Into<Pos2<u16>>, cell: impl Into<Cell>) {
         let pos = pos.into();
-        let ch = ch.into();
-        let cell = Cell {
-            ch: ch.char(),
-            fmt: fmt.into(),
-        };
+        let cell = cell.into();
         let cell_index = self.cell_index(pos);
-        match ch {
+        match CharType::classify(cell.ch) {
             CharType::SingleWidth(_) => {
+                self.mark_cell_overdrawn(pos);
                 self.term.cells[cell_index] = cell;
-                self.mark_overdrawn(pos);
             }
             CharType::DoubleWidth(_) => {
-                debug_assert!(pos.x < self.size().width);
+                self.mark_double_width_cell_overdrawn(pos);
                 self.term.cells[cell_index] = cell;
                 self.term.cells[cell_index + 1] = cell.ch(' ');
-                self.mark_overdrawn_double_width(pos);
+            }
+            CharType::Other(_) => {}
+        }
+    }
+
+    /// Repeats a cell to fill a strip `length` cells long
+    pub fn fill_horizontal(
+        &mut self,
+        pos: impl Into<Pos2<u16>>,
+        width: u16,
+        cell: impl Into<Cell>,
+    ) {
+        let pos = pos.into();
+        let cell = cell.into();
+        let cell_index = self.cell_index(pos);
+        match CharType::classify(cell.ch) {
+            CharType::SingleWidth(_) => {
+                self.mark_area_overdrawn(Box2::new(
+                    pos,
+                    pos + Pos2::new(width.saturating_sub(1), 0),
+                ));
+                for cell_index in cell_index..(cell_index + width as usize) {
+                    self.term.cells[cell_index] = cell;
+                }
+            }
+            CharType::DoubleWidth(_) => {
+                self.mark_area_overdrawn(Box2::new(
+                    pos,
+                    pos + Pos2::new((width - width % 2).saturating_sub(1), 0),
+                ));
+                for cell_index in ((cell_index + 1)..(cell_index + width as usize)).step_by(2) {
+                    self.term.cells[cell_index - 1] = cell;
+                    self.term.cells[cell_index] = cell;
+                }
+            }
+            CharType::Other(_) => {}
+        }
+    }
+
+    pub fn fill_vertical(&mut self, pos: impl Into<Pos2<u16>>, height: u16, cell: impl Into<Cell>) {
+        let pos = pos.into();
+        let cell = cell.into();
+        let cell_index = self.cell_index(pos);
+        let jump = self.term.size.width as usize;
+        self.mark_area_overdrawn(Box2::new(pos, pos + Pos2::new(0, height.saturating_sub(1))));
+        let iter = (cell_index..(cell_index + jump * height as usize)).step_by(jump);
+        match CharType::classify(cell.ch) {
+            CharType::SingleWidth(_) => {
+                for cell_index in iter {
+                    self.term.cells[cell_index] = cell;
+                }
+            }
+            CharType::DoubleWidth(_) => {
+                for cell_index in iter {
+                    self.term.cells[cell_index] = cell;
+                    self.term.cells[cell_index + 1] = cell.ch(' ');
+                }
+            }
+            CharType::Other(_) => {}
+        }
+    }
+
+    pub fn fill_area(&mut self, area: Box2<u16>, cell: impl Into<Cell>) {
+        let cell = cell.into();
+        let cell_index = self.cell_index(area.min);
+        let jump = self.term.size.width as usize;
+        let size = (area.max.to_vec() - area.min.to_vec() + Vec2::splat(1)).to_size();
+        let iter = (cell_index..(cell_index + jump * size.height as usize)).step_by(jump);
+        match CharType::classify(cell.ch) {
+            CharType::SingleWidth(_) => {
+                self.mark_area_overdrawn(area);
+                for cell_index in iter {
+                    for cell_index in cell_index..(cell_index + size.width as usize) {
+                        self.term.cells[cell_index] = cell;
+                    }
+                }
+            }
+            CharType::DoubleWidth(_) => {
+                self.mark_area_overdrawn(Box2::new(
+                    area.min,
+                    [area.max.x - size.width % 2, area.max.y],
+                ));
+                for cell_index in iter {
+                    for cell_index in
+                        ((cell_index + 1)..(cell_index + size.width as usize)).step_by(2)
+                    {
+                        self.term.cells[cell_index - 1] = cell;
+                        self.term.cells[cell_index] = cell;
+                    }
+                }
             }
             CharType::Other(_) => {}
         }
@@ -463,7 +539,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn terminal_rows() {
+    fn rows() {
         let cells = ['a', 'b', 'c', 'd', 'e', 'f'].map(Into::into);
         let mut rows = Rows {
             width: 2,
@@ -484,7 +560,7 @@ mod tests {
     }
 
     #[test]
-    fn terminal_rows_rev() {
+    fn rows_rev() {
         let cells = ['a', 'b', 'c', 'd', 'e', 'f'].map(Into::into);
         let mut rows = Rows {
             width: 2,
@@ -499,7 +575,7 @@ mod tests {
     }
 
     #[test]
-    fn terminal_rows_nth() {
+    fn rows_nth() {
         let cells = ['a', 'b', 'c', 'd', 'e', 'f'].map(Into::into);
         let rows = Rows {
             width: 2,
@@ -523,7 +599,7 @@ mod tests {
     }
 
     #[test]
-    fn terminal_rows_nth_back() {
+    fn rows_nth_back() {
         let cells = ['a', 'b', 'c', 'd', 'e', 'f'].map(Into::into);
         let rows = Rows {
             width: 2,
@@ -548,7 +624,7 @@ mod tests {
     }
 
     #[test]
-    fn terminal_row() {
+    fn row() {
         let cells = ['a', 'b', '✨', ' ', 'c', 'd'].map(Into::into);
         let mut row = Row { cells: &cells };
         assert_eq!(row.size_hint(), (3, Some(6)));
@@ -572,7 +648,7 @@ mod tests {
     }
 
     #[test]
-    fn terminal_row_rev() {
+    fn row_rev() {
         let cells = ['a', 'b', '✨', ' ', 'c', 'd'].map(Into::into);
         let mut row = Row { cells: &cells }.rev();
 
@@ -585,17 +661,78 @@ mod tests {
     }
 
     #[test]
-    fn terminal_set_cell() {
+    fn set_cell() {
         let mut term = Terminal::new([4, 2]);
 
         let mut window = term.edit();
-        window.set_cell([1, 0], 'a', ());
+        window.set_cell([1, 0], 'a');
         assert_eq!(window.overdrawn(), Some(Box2::from(Pos2::new(1, 0))));
 
         let mut window = term.edit();
-        window.set_cell([1, 1], '✨', ());
+        window.set_cell([1, 1], '✨');
         assert_eq!(window.overdrawn(), Some(Box2::new([1, 1], [2, 1])));
 
         term.assert_chars_equal([" a  ", " ✨ "]);
+    }
+
+    #[test]
+    fn fill_horizontal() {
+        let mut term = Terminal::new([12, 3]);
+
+        let mut window = term.edit();
+        window.fill_horizontal([1, 0], 10, 'c');
+        assert_eq!(window.overdrawn(), Some(Box2::new([1, 0], [10, 0])));
+
+        let mut window = term.edit();
+        window.fill_horizontal([1, 1], 10, '✨');
+        assert_eq!(window.overdrawn(), Some(Box2::new([1, 1], [10, 1])));
+
+        let mut window = term.edit();
+        window.fill_horizontal([1, 2], 9, '✨');
+        assert_eq!(window.overdrawn(), Some(Box2::new([1, 2], [8, 2])));
+
+        term.assert_chars_equal([" cccccccccc ", " ✨✨✨✨✨ ", " ✨✨✨✨   "]);
+    }
+
+    #[test]
+    fn fill_vertical() {
+        let mut term = Terminal::new([3, 12]);
+
+        let mut window = term.edit();
+        window.fill_vertical([1, 1], 10, '✨');
+        assert_eq!(window.overdrawn(), Some(Box2::new([1, 1], [1, 10])));
+
+        let mut window = term.edit();
+        window.fill_vertical([0, 1], 10, 'c');
+        assert_eq!(window.overdrawn(), Some(Box2::new([0, 1], [0, 10])));
+
+        term.assert_chars_equal([
+            "   ", "c✨", "c✨", "c✨", "c✨", "c✨", "c✨", "c✨", "c✨", "c✨", "c✨", "   ",
+        ]);
+    }
+
+    #[test]
+    fn fill_area() {
+        let mut term = Terminal::new([16, 5]);
+
+        let mut window = term.edit();
+        window.fill_area(Box2::new([1, 1], [4, 3]), 'c');
+        assert_eq!(window.overdrawn(), Some(Box2::new([1, 1], [4, 3])));
+
+        let mut window = term.edit();
+        window.fill_area(Box2::new([6, 1], [9, 3]), '✨');
+        assert_eq!(window.overdrawn(), Some(Box2::new([6, 1], [9, 3])));
+
+        let mut window = term.edit();
+        window.fill_area(Box2::new([11, 1], [13, 3]), '✨');
+        assert_eq!(window.overdrawn(), Some(Box2::new([11, 1], [12, 3])));
+
+        term.assert_chars_equal([
+            "                ",
+            " cccc ✨✨ ✨   ",
+            " cccc ✨✨ ✨   ",
+            " cccc ✨✨ ✨   ",
+            "                ",
+        ]);
     }
 }

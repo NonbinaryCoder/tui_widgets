@@ -1,5 +1,6 @@
 use crate::{math::Size2, terminal::TerminalWindow};
 
+pub mod decoration;
 pub mod style;
 
 /// A widget in a tui app, for example text.
