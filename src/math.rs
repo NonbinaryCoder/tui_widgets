@@ -106,16 +106,6 @@ impl<T> Size2<T> {
         self.width * self.height
     }
 
-    pub fn contains_rect(self, rect: Rect2<T>) -> bool
-    where
-        T: PartialOrd + Add<Output = T>,
-    {
-        rect.x < self.width
-            && rect.y < self.height
-            && (rect.x + rect.width) <= self.width
-            && (rect.y + rect.height) <= self.height
-    }
-
     pub fn contains_pos(self, pos: impl Into<Pos2<T>>) -> bool
     where
         T: PartialOrd,
@@ -201,116 +191,11 @@ formatting!(
     Size2: "", "x", ""
 );
 
-/// A rectangle defined by it's top left point and it's extents.
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Rect2<T> {
-    pub x: T,
-    pub y: T,
-    pub width: T,
-    pub height: T,
-}
-
 /// A rectangle defined by it's top left and bottom right points
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Box2<T> {
     pub min: Pos2<T>,
     pub max: Pos2<T>,
-}
-
-impl<T> Rect2<T> {
-    pub fn new(pos: impl Into<Pos2<T>>, size: impl Into<Size2<T>>) -> Self {
-        let (pos, size) = (pos.into(), size.into());
-        Self {
-            x: pos.x,
-            y: pos.y,
-            width: size.width,
-            height: size.height,
-        }
-    }
-
-    pub fn pos(self) -> Pos2<T> {
-        Pos2::new(self.x, self.y)
-    }
-
-    pub fn size(self) -> Size2<T> {
-        Size2::new(self.width, self.height)
-    }
-
-    pub fn decompose(self) -> (Pos2<T>, Size2<T>) {
-        (
-            Pos2::new(self.x, self.y),
-            Size2::new(self.width, self.height),
-        )
-    }
-
-    pub fn to_box(self) -> Box2<T>
-    where
-        T: Add<Output = T> + Clone,
-    {
-        let (pos, size) = self.decompose();
-        Box2 {
-            min: pos.clone(),
-            max: pos + size,
-        }
-    }
-
-    pub const fn as_ref(&self) -> Rect2<&T> {
-        Rect2 {
-            x: &self.x,
-            y: &self.y,
-            width: &self.width,
-            height: &self.height,
-        }
-    }
-
-    pub fn translate(self, vec: impl Into<Vec2<T>>) -> Self
-    where
-        T: Add<Output = T>,
-    {
-        let (pos, size) = self.decompose();
-        Self::new(pos + vec.into(), size)
-    }
-
-    pub fn translate_sub(self, vec: impl Into<Vec2<T>>) -> Self
-    where
-        T: Sub<Output = T>,
-    {
-        let (pos, size) = self.decompose();
-        Self::new(pos - vec.into(), size)
-    }
-
-    pub fn contains_rect(self, rect: Rect2<T>) -> bool
-    where
-        T: PartialOrd + Add<Output = T> + Copy,
-    {
-        rect.x >= self.x
-            && rect.y >= self.y
-            && rect.x < (self.x + self.width)
-            && rect.y < (self.x + self.height)
-            && (rect.x + rect.width) <= (self.x + self.width)
-            && (rect.y + rect.height) <= (self.y + self.height)
-    }
-
-    pub fn contains_pos(self, pos: impl Into<Pos2<T>>) -> bool
-    where
-        T: PartialOrd + Add<Output = T>,
-    {
-        let pos = pos.into();
-        pos.x >= self.x
-            && pos.y >= self.y
-            && pos.x < (self.x + self.width)
-            && pos.y < (self.y + self.height)
-    }
-}
-
-impl<T: Debug> Debug for Rect2<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let (pos, size) = self.as_ref().decompose();
-        f.debug_struct(stringify!(Rect2))
-            .field("pos", &pos)
-            .field("size", &size)
-            .finish()
-    }
 }
 
 impl<T> Box2<T> {
@@ -419,82 +304,6 @@ mod tests {
                 match ch {
                     'y' => assert!(size.contains_pos([x, y])),
                     'n' => assert!(!size.contains_pos([x, y])),
-                    _ => unreachable!(),
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn size_contains_rect() {
-        let size = Size2::new(9, 5);
-        let rect_size = Size2::new(3, 2);
-        let contained = [
-            "yyyyyyynnnnn",
-            "yyyyyyynnnnn",
-            "yyyyyyynnnnn",
-            "yyyyyyynnnnn",
-            "nnnnnnnnnnnn",
-            "nnnnnnnnnnnn",
-            "nnnnnnnnnnnn",
-            "nnnnnnnnnnnn",
-        ];
-        for (y, row) in contained.into_iter().enumerate() {
-            for (x, ch) in row.chars().enumerate() {
-                match ch {
-                    'y' => assert!(size.contains_rect(Rect2::new([x, y], rect_size))),
-                    'n' => assert!(!size.contains_rect(Rect2::new([x, y], rect_size))),
-                    _ => unreachable!(),
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn rect_contains_pos() {
-        let rect = Rect2::new([3, 2], [4, 5]);
-        let contained = [
-            "nnnnnnnnnn",
-            "nnnnnnnnnn",
-            "nnnyyyynnn",
-            "nnnyyyynnn",
-            "nnnyyyynnn",
-            "nnnyyyynnn",
-            "nnnyyyynnn",
-            "nnnnnnnnnn",
-            "nnnnnnnnnn",
-        ];
-        for (y, row) in contained.into_iter().enumerate() {
-            for (x, ch) in row.chars().enumerate() {
-                match ch {
-                    'y' => assert!(rect.contains_pos([x, y])),
-                    'n' => assert!(!rect.contains_pos([x, y])),
-                    _ => unreachable!(),
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn rect_contains_rect() {
-        let rect = Rect2::new([3, 2], [7, 5]);
-        let test_size = Size2::new(4, 3);
-        let contained = [
-            "nnnnnnnnnnnn",
-            "nnnnnnnnnnnn",
-            "nnnyyyynnnnn",
-            "nnnyyyynnnnn",
-            "nnnyyyynnnnn",
-            "nnnnnnnnnnnn",
-            "nnnnnnnnnnnn",
-            "nnnnnnnnnnnn",
-            "nnnnnnnnnnnn",
-        ];
-        for (y, row) in contained.into_iter().enumerate() {
-            for (x, ch) in row.chars().enumerate() {
-                match ch {
-                    'y' => assert!(rect.contains_rect(Rect2::new([x, y], test_size))),
-                    'n' => assert!(!rect.contains_rect(Rect2::new([x, y], test_size))),
                     _ => unreachable!(),
                 }
             }
