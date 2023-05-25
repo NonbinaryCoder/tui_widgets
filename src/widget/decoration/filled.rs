@@ -19,7 +19,7 @@ impl Filled {
 impl Widget for Filled {
     fn render(&mut self, mut terminal: TerminalWindow) {
         if let Some(overdrawn) = terminal.overdrawn() {
-            terminal.fill_area(overdrawn, self.0)
+            terminal.fill_area(overdrawn, self.0);
         }
     }
 }

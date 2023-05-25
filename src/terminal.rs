@@ -300,7 +300,7 @@ impl<'a> TerminalWindow<'a> {
         self.overdrawn = Some(self.overdrawn.map_or(area, |o| o.contain_box(area)));
     }
 
-    pub fn set_cell(&mut self, pos: impl Into<Pos2<u16>>, cell: impl Into<Cell>) {
+    pub fn set_cell(&mut self, pos: impl Into<Pos2<u16>>, cell: impl Into<Cell>) -> &mut Self {
         let pos = pos.into();
         let cell = cell.into();
         let cell_index = self.cell_index(pos);
@@ -316,6 +316,7 @@ impl<'a> TerminalWindow<'a> {
             }
             CharType::Other(_) => {}
         }
+        self
     }
 
     /// Repeats a cell to fill a strip `length` cells long
@@ -324,7 +325,7 @@ impl<'a> TerminalWindow<'a> {
         pos: impl Into<Pos2<u16>>,
         width: u16,
         cell: impl Into<Cell>,
-    ) {
+    ) -> &mut Self {
         let pos = pos.into();
         let cell = cell.into();
         let cell_index = self.cell_index(pos);
@@ -350,9 +351,15 @@ impl<'a> TerminalWindow<'a> {
             }
             CharType::Other(_) => {}
         }
+        self
     }
 
-    pub fn fill_vertical(&mut self, pos: impl Into<Pos2<u16>>, height: u16, cell: impl Into<Cell>) {
+    pub fn fill_vertical(
+        &mut self,
+        pos: impl Into<Pos2<u16>>,
+        height: u16,
+        cell: impl Into<Cell>,
+    ) -> &mut Self {
         let pos = pos.into();
         let cell = cell.into();
         let cell_index = self.cell_index(pos);
@@ -373,9 +380,10 @@ impl<'a> TerminalWindow<'a> {
             }
             CharType::Other(_) => {}
         }
+        self
     }
 
-    pub fn fill_area(&mut self, area: Box2<u16>, cell: impl Into<Cell>) {
+    pub fn fill_area(&mut self, area: Box2<u16>, cell: impl Into<Cell>) -> &mut Self {
         let cell = cell.into();
         let cell_index = self.cell_index(area.min);
         let jump = self.term.size.width as usize;
@@ -406,6 +414,7 @@ impl<'a> TerminalWindow<'a> {
             }
             CharType::Other(_) => {}
         }
+        self
     }
 }
 
