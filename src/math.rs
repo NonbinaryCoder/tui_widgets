@@ -113,6 +113,14 @@ impl<T> Size2<T> {
         let pos = pos.into();
         pos.x < self.width && pos.y < self.height
     }
+
+    pub fn contains_box(self, b: Box2<T>) -> bool
+    where
+        T: PartialOrd + Copy,
+    {
+        let Box2 { min, max } = b;
+        self.contains_pos(min) && self.contains_pos(max)
+    }
 }
 
 macro_rules! vec_ops {
@@ -203,6 +211,17 @@ impl<T> Box2<T> {
         Self {
             min: min.into(),
             max: max.into(),
+        }
+    }
+
+    pub fn translate(self, offset: impl Into<Vec2<T>>) -> Box2<T::Output>
+    where
+        T: Add<T> + Copy,
+    {
+        let offset = offset.into();
+        Box2 {
+            min: self.min + offset,
+            max: self.max + offset,
         }
     }
 

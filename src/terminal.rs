@@ -265,7 +265,8 @@ pub struct TerminalWindow<'a> {
 }
 
 impl<'a> TerminalWindow<'a> {
-    fn offset_pos(&self, pos: Pos2<u16>) -> Pos2<u16> {
+    fn offset_pos(&self, pos: impl Into<Pos2<u16>>) -> Pos2<u16> {
+        let pos = pos.into();
         let size = self.size();
         debug_assert!(
             size.contains_pos(pos),
@@ -274,8 +275,17 @@ impl<'a> TerminalWindow<'a> {
         pos + self.area.min
     }
 
+    fn offset_area(&self, area: Box2<u16>) -> Box2<u16> {
+        let size = self.size();
+        debug_assert!(
+            size.contains_box(area),
+            "Size of terminal window ({size}) should contain area ({area:?})",
+        );
+        area.translate(self.area.min)
+    }
+
     fn cell_index(&self, pos: Pos2<u16>) -> usize {
-        self.term.cell_index(self.offset_pos(pos))
+        self.term.cell_index(pos)
     }
 
     pub fn size(&self) -> Size2<u16> {
@@ -301,7 +311,7 @@ impl<'a> TerminalWindow<'a> {
     }
 
     pub fn set_cell(&mut self, pos: impl Into<Pos2<u16>>, cell: impl Into<Cell>) -> &mut Self {
-        let pos = pos.into();
+        let pos = self.offset_pos(pos);
         let cell = cell.into();
         let cell_index = self.cell_index(pos);
         match CharType::classify(cell.ch) {
@@ -319,14 +329,14 @@ impl<'a> TerminalWindow<'a> {
         self
     }
 
-    /// Repeats a cell to fill a strip `length` cells long
+    /// Repeats a cell to fill a strip `width` cells long horizontally.
     pub fn fill_horizontal(
         &mut self,
         pos: impl Into<Pos2<u16>>,
         width: u16,
         cell: impl Into<Cell>,
     ) -> &mut Self {
-        let pos = pos.into();
+        let pos = self.offset_pos(pos);
         let cell = cell.into();
         let cell_index = self.cell_index(pos);
         match CharType::classify(cell.ch) {
@@ -354,13 +364,14 @@ impl<'a> TerminalWindow<'a> {
         self
     }
 
+    /// Repeats a cell to fill a strip `height` cells tall vertically.
     pub fn fill_vertical(
         &mut self,
         pos: impl Into<Pos2<u16>>,
         height: u16,
         cell: impl Into<Cell>,
     ) -> &mut Self {
-        let pos = pos.into();
+        let pos = self.offset_pos(pos);
         let cell = cell.into();
         let cell_index = self.cell_index(pos);
         let jump = self.term.size.width as usize;
@@ -383,7 +394,9 @@ impl<'a> TerminalWindow<'a> {
         self
     }
 
+    /// Repeats a cell to fill the specified area.
     pub fn fill_area(&mut self, area: Box2<u16>, cell: impl Into<Cell>) -> &mut Self {
+        let area = self.offset_area(area);
         let cell = cell.into();
         let cell_index = self.cell_index(area.min);
         let jump = self.term.size.width as usize;
@@ -415,6 +428,19 @@ impl<'a> TerminalWindow<'a> {
             CharType::Other(_) => {}
         }
         self
+    }
+
+    pub fn subwindow(&mut self, area: Box2<u16>, f: impl FnOnce(&mut TerminalWindow)) {
+        let area = self.offset_area(area);
+        let mut subwindow = TerminalWindow {
+            area,
+            overdrawn: self.overdrawn.and_then(|o| o.intersection(area)),
+            term: self.term,
+        };
+        f(&mut subwindow);
+        if let Some(overdrawn) = subwindow.overdrawn {
+            self.mark_area_overdrawn(overdrawn);
+        }
     }
 }
 
@@ -743,5 +769,18 @@ mod tests {
             " cccc ✨✨ ✨   ",
             "                ",
         ]);
+    }
+
+    #[test]
+    fn subwindow() {
+        let mut term = Terminal::new([5, 5]);
+        let mut window = term.edit();
+
+        window.subwindow(Box2::new([1, 2], [4, 4]), |w| {
+            w.set_cell([1, 1], 'a');
+        });
+
+        assert_eq!(window.overdrawn(), Some(Box2::new([2, 3], [2, 3])));
+        term.assert_chars_equal(["     ", "     ", "     ", "  a  ", "     "]);
     }
 }
