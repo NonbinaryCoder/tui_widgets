@@ -18,7 +18,7 @@ pub trait Widget {
     /// Nothing should be written outside of `terminal.size()`.
     ///
     /// The terminal keeps track of what area of it has been overwritten
-    fn render(&mut self, terminal: TerminalWindow);
+    fn render(&mut self, terminal: &mut TerminalWindow);
 
     /// What size this widget wants to be.
     ///
@@ -30,7 +30,7 @@ pub trait Widget {
 }
 
 impl Widget for Box<dyn Widget> {
-    fn render(&mut self, terminal: TerminalWindow) {
+    fn render(&mut self, terminal: &mut TerminalWindow) {
         (**self).render(terminal)
     }
 
@@ -40,14 +40,14 @@ impl Widget for Box<dyn Widget> {
 }
 
 impl Widget for () {
-    fn render(&mut self, _terminal: TerminalWindow) {}
+    fn render(&mut self, _terminal: &mut TerminalWindow) {}
 }
 
 impl<F> Widget for F
 where
-    F: FnMut(TerminalWindow),
+    F: FnMut(&mut TerminalWindow),
 {
-    fn render(&mut self, terminal: TerminalWindow) {
+    fn render(&mut self, terminal: &mut TerminalWindow) {
         self(terminal)
     }
 }

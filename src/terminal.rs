@@ -7,7 +7,10 @@ use unicode_width::UnicodeWidthChar;
 
 use crate::{
     math::{Box2, Pos2, Size2, Vec2},
-    widget::style::{Color, Colors, Formatting},
+    widget::{
+        style::{Color, Colors, Formatting},
+        Widget,
+    },
 };
 
 #[derive(Debug)]
@@ -441,6 +444,10 @@ impl<'a> TerminalWindow<'a> {
         if let Some(overdrawn) = subwindow.overdrawn {
             self.mark_area_overdrawn(overdrawn);
         }
+    }
+
+    pub fn add_widget<W: Widget>(&mut self, area: Box2<u16>, widget: &mut W) {
+        self.subwindow(area, |w| widget.render(w))
     }
 }
 
