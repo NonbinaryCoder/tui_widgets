@@ -30,7 +30,7 @@ impl Terminal {
 
     pub fn edit(&mut self) -> TerminalWindow<'_> {
         TerminalWindow {
-            area: Box2::new([0, 0], self.size.to_vec()),
+            area: Box2::new([0, 0], self.size.to_vec().map(|v| v.saturating_sub(1))),
             overdrawn: None,
             term: self,
         }
