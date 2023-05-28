@@ -137,7 +137,7 @@ impl<'a> TerminalWindow<'a> {
                 self.term.cells[cell_index] = cell;
                 self.term.cells[cell_index + 1] = cell.ch(' ');
             }
-            CharType::Other(_) => {}
+            _ => {}
         }
         self
     }
@@ -149,30 +149,26 @@ impl<'a> TerminalWindow<'a> {
         width: u16,
         cell: impl Into<Cell>,
     ) -> &mut Self {
-        let pos = self.offset_pos(pos);
+        let pos = pos.into();
         let cell = cell.into();
         let cell_index = self.cell_index(pos);
         match CharType::classify(cell.ch) {
-            CharType::SingleWidth(_) => {
-                self.mark_area_overdrawn(Box2::new(
-                    pos,
-                    pos + Pos2::new(width.saturating_sub(1), 0),
-                ));
+            CharType::SingleWidth(_) if width > 0 => {
+                self.mark_area_overdrawn(Box2::new(pos, pos + Pos2::new(width - 1, 0)));
                 for cell_index in cell_index..(cell_index + width as usize) {
                     self.term.cells[cell_index] = cell;
                 }
             }
-            CharType::DoubleWidth(_) => {
-                self.mark_area_overdrawn(Box2::new(
-                    pos,
-                    pos + Pos2::new((width - width % 2).saturating_sub(1), 0),
-                ));
-                for cell_index in ((cell_index + 1)..(cell_index + width as usize)).step_by(2) {
-                    self.term.cells[cell_index - 1] = cell;
+            CharType::DoubleWidth(_) if width > 1 => {
+                let offset = width % 2;
+                self.mark_area_overdrawn(Box2::new(pos, pos + Pos2::new(width - 1 - offset, 0)));
+                for cell_index in (cell_index..(cell_index + (width - offset) as usize)).step_by(2)
+                {
                     self.term.cells[cell_index] = cell;
+                    self.term.cells[cell_index + 1] = cell.ch(' ');
                 }
             }
-            CharType::Other(_) => {}
+            _ => {}
         }
         self
     }
