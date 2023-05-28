@@ -187,8 +187,9 @@ impl<'a> TerminalWindow<'a> {
         let pos = pos.into();
         let cell = cell.into();
         let cell_index = self.cell_index(pos);
-        let jump = self.term.size.width as usize;
-        let iter = (cell_index..).step_by(jump).take(height as usize);
+        let iter = (cell_index..)
+            .step_by(self.term.size.width as usize)
+            .take(height as usize);
         match CharType::classify(cell.ch) {
             CharType::SingleWidth(_) => {
                 self.mark_area_overdrawn(Box2::new(pos, pos + Pos2::new(0, height - 1)));
@@ -210,12 +211,16 @@ impl<'a> TerminalWindow<'a> {
 
     /// Repeats a cell to fill the specified area.
     pub fn fill_area(&mut self, area: Box2<u16>, cell: impl Into<Cell>) -> &mut Self {
-        let area = self.offset_area(area);
+        let size = (area.max.to_vec() + Vec2::splat(1) - area.min.to_vec()).to_size();
+        if size.width < 1 || size.height < 1 {
+            return self;
+        }
+
         let cell = cell.into();
         let cell_index = self.cell_index(area.min);
-        let jump = self.term.size.width as usize;
-        let size = (area.max.to_vec() - area.min.to_vec() + Vec2::splat(1)).to_size();
-        let iter = (cell_index..(cell_index + jump * size.height as usize)).step_by(jump);
+        let iter = (cell_index..)
+            .step_by(self.term.size.width as usize)
+            .take(size.height as usize);
         match CharType::classify(cell.ch) {
             CharType::SingleWidth(_) => {
                 self.mark_area_overdrawn(area);
@@ -226,20 +231,20 @@ impl<'a> TerminalWindow<'a> {
                 }
             }
             CharType::DoubleWidth(_) => {
-                self.mark_area_overdrawn(Box2::new(
-                    area.min,
-                    [area.max.x - size.width % 2, area.max.y],
-                ));
+                let offset = size.width % 2;
+                let mut area = area;
+                area.max.x -= offset;
+                self.mark_area_overdrawn(area);
                 for cell_index in iter {
                     for cell_index in
-                        ((cell_index + 1)..(cell_index + size.width as usize)).step_by(2)
+                        (cell_index..(cell_index + (size.width - offset) as usize)).step_by(2)
                     {
-                        self.term.cells[cell_index - 1] = cell;
                         self.term.cells[cell_index] = cell;
+                        self.term.cells[cell_index + 1] = cell;
                     }
                 }
             }
-            CharType::Other(_) => {}
+            _ => {}
         }
         self
     }
