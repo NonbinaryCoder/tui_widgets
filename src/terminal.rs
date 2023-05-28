@@ -89,7 +89,7 @@ impl<'a> TerminalWindow<'a> {
     }
 
     fn cell_index(&self, pos: Pos2<u16>) -> usize {
-        self.term.cell_index(pos)
+        self.term.cell_index(self.offset_pos(pos))
     }
 
     pub fn size(&self) -> Size2<u16> {
@@ -105,12 +105,12 @@ impl<'a> TerminalWindow<'a> {
             width: self.size().width as usize,
             term_width: self.term.size.width as usize,
             cells: &self.term.cells
-                [self.cell_index(self.area.min)..=self.cell_index(self.area.max)],
+                [self.term.cell_index(self.area.min)..=self.term.cell_index(self.area.max)],
         }
     }
 
     fn mark_cell_overdrawn(&mut self, cell: Pos2<u16>) {
-        debug_assert!(self.area.contains_pos(cell));
+        debug_assert!(self.size().contains_pos(cell));
         self.overdrawn = Some(self.overdrawn.map_or(cell.into(), |o| o.contain_pos(cell)));
     }
 
@@ -119,12 +119,12 @@ impl<'a> TerminalWindow<'a> {
     }
 
     fn mark_area_overdrawn(&mut self, area: Box2<u16>) {
-        debug_assert!(self.area.contains_box(area));
+        debug_assert!(self.size().contains_box(area));
         self.overdrawn = Some(self.overdrawn.map_or(area, |o| o.contain_box(area)));
     }
 
     pub fn set_cell(&mut self, pos: impl Into<Pos2<u16>>, cell: impl Into<Cell>) -> &mut Self {
-        let pos = self.offset_pos(pos);
+        let pos = pos.into();
         let cell = cell.into();
         let cell_index = self.cell_index(pos);
         match CharType::classify(cell.ch) {
@@ -830,9 +830,9 @@ mod tests {
     fn set_cell_dw_corners() {
         Terminal::test_widget([8, 4], |term| {
             term.set_cell([0, 0], '✨')
-                .set_cell([0, 6], '🌈')
-                .set_cell([3, 0], '全')
-                .set_cell([3, 6], '角');
+                .set_cell([6, 0], '🌈')
+                .set_cell([0, 3], '全')
+                .set_cell([6, 3], '角');
 
             term.assert_chars_equal(["✨    🌈", "        ", "        ", "全    角"]);
             assert_eq!(term.overdrawn(), Some(Box2::new([0, 0], [7, 3])));
