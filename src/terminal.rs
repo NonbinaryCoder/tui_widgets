@@ -41,224 +41,25 @@ impl Terminal {
         pos.x + pos.y * self.size.width as usize
     }
 
-    pub fn rows(&self) -> Rows<'_> {
-        Rows {
-            width: self.size.width as usize,
-            cells: &self.cells,
-        }
-    }
+    /// Creates a terminal window that can be used to test whether or not
+    /// widgets work as intended.  Not intended to be used outside of tests.
+    pub fn test_widget(size: impl Into<Size2<u16>>, mut f: impl FnMut(&mut TerminalWindow)) {
+        let size = size.into();
 
-    fn assert_equal_inner<R, E, I>(
-        &self,
-        template: &[R],
-        mut row_elements: impl FnMut(&R) -> I,
-        mut cell_to_template: impl FnMut(Cell) -> E,
-    ) where
-        I: Iterator<Item = E>,
-        E: PartialEq + Display,
-    {
-        let height = self.size.height;
-        let template_height = template.len();
-        assert_eq!(
-            height as usize, template_height,
-            "Height of terminal ({height}) should match height of template ({template_height})"
-        );
-        let mut mismatch = None;
-        for (y, (row, template_row)) in iter::zip(self.rows(), template).enumerate() {
-            let mut templates_iter = row_elements(template_row);
-            for (x, (cell, template)) in iter::zip(row.clone(), templates_iter.by_ref()).enumerate()
-            {
-                if mismatch.is_none() && !(cell_to_template(cell) == template) {
-                    mismatch = Some(Pos2::new(x, y));
-                }
-            }
-        }
-        if let Some(Pos2 { x, y }) = mismatch {
-            eprintln!("Template:");
-            for row in template {
-                for template in row_elements(row) {
-                    eprint!("{}", template);
-                }
-                eprintln!();
-            }
-            eprintln!();
-            eprintln!("Actual:");
-            for row in self.rows() {
-                for cell in row {
-                    eprint!("{}", cell_to_template(cell));
-                }
-                eprintln!();
-            }
-            eprintln!();
-            panic!("Mismatch at column {x}, row {y}");
-        }
-    }
+        let mut term = Self::new(size);
+        println!("Small terminal");
+        term.edit()
+            .subwindow(Box2::new([0, 0], size.to_vec() - Vec2::splat(1)), &mut f);
 
-    /// Asserts that all the chars in the cells this are the same as the chars
-    /// in the template
-    pub fn assert_chars_equal<'a>(&self, template: impl AsRef<[&'a str]>) {
-        self.assert_equal_inner(template.as_ref(), |row| row.chars(), |cell| cell.ch);
+        let inner_area = Box2::new([1, 2], size.to_vec() + Vec2::new(1, 2) - Vec2::splat(1));
+        let full_size = size + Vec2::new(1, 2) + Vec2::new(3, 4);
+
+        let mut term = Self::new(full_size);
+        let mut window = term.edit();
+        println!("Large terminal");
+        window.subwindow(inner_area, &mut f);
     }
 }
-
-/// An iterator over the rows of a terminal.  Rows are returned as iterators
-/// over their elements.
-#[derive(Debug, Clone)]
-pub struct Rows<'a> {
-    width: usize,
-    cells: &'a [Cell],
-}
-
-impl<'a> Iterator for Rows<'a> {
-    type Item = Row<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        (self.cells.len() >= self.width).then(|| {
-            let cells;
-            (cells, self.cells) = self.cells.split_at(self.width);
-            Row { cells }
-        })
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let len = self.len();
-        (len, Some(len))
-    }
-
-    fn count(self) -> usize
-    where
-        Self: Sized,
-    {
-        self.len()
-    }
-
-    fn last(mut self) -> Option<Self::Item>
-    where
-        Self: Sized,
-    {
-        self.next_back()
-    }
-
-    fn nth(&mut self, n: usize) -> Option<Self::Item> {
-        let discard_width = self.width * n;
-        if self.cells.len() >= discard_width {
-            (_, self.cells) = self.cells.split_at(discard_width);
-            self.next()
-        } else {
-            self.cells = &[];
-            None
-        }
-    }
-}
-
-impl<'a> ExactSizeIterator for Rows<'a> {
-    fn len(&self) -> usize {
-        self.cells.len() / self.width
-    }
-}
-
-impl<'a> DoubleEndedIterator for Rows<'a> {
-    fn next_back(&mut self) -> Option<Self::Item> {
-        (self.cells.len() >= self.width).then(|| {
-            let cells;
-            (self.cells, cells) = self.cells.split_at(self.cells.len() - self.width);
-            Row { cells }
-        })
-    }
-
-    fn nth_back(&mut self, n: usize) -> Option<Self::Item> {
-        let discard_width = self.width * n;
-        if self.cells.len() >= discard_width {
-            (self.cells, _) = self.cells.split_at(self.cells.len() - discard_width);
-            self.next_back()
-        } else {
-            self.cells = &[];
-            None
-        }
-    }
-}
-
-impl<'a> FusedIterator for Rows<'a> {}
-
-/// An iterator over the characters in a row.  Double width characters are only
-/// returned once.
-#[derive(Debug, Clone)]
-pub struct Row<'a> {
-    cells: &'a [Cell],
-}
-
-impl<'a> Iterator for Row<'a> {
-    type Item = Cell;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if let [cell, rest @ ..] = self.cells {
-            match UnicodeWidthChar::width(cell.ch) {
-                Some(1) => {
-                    self.cells = rest;
-                    Some(*cell)
-                }
-                Some(2) => {
-                    if let [_, rest @ ..] = rest {
-                        self.cells = rest;
-                        Some(*cell)
-                    } else {
-                        self.cells = &[];
-                        Some(*cell)
-                    }
-                }
-                width @ _ => unreachable!(
-                    "Chars in cells should have a width of 1 or 2; char '{}' has a width of \
-                    {width:?}",
-                    cell.ch
-                ),
-            }
-        } else {
-            None
-        }
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let len = self.cells.len();
-        (len / 2 + len % 2, Some(len))
-    }
-
-    fn last(mut self) -> Option<Self::Item>
-    where
-        Self: Sized,
-    {
-        self.next_back()
-    }
-}
-
-impl<'a> DoubleEndedIterator for Row<'a> {
-    fn next_back(&mut self) -> Option<Self::Item> {
-        match self.cells {
-            [rest @ .., maybe_dw, cell] => match UnicodeWidthChar::width(maybe_dw.ch) {
-                Some(1) => {
-                    let [cells @ .., _] = self.cells else { unreachable!() };
-                    self.cells = cells;
-                    Some(*cell)
-                }
-                Some(2) => {
-                    self.cells = rest;
-                    Some(*maybe_dw)
-                }
-                width @ _ => unreachable!(
-                    "Chars in cells should have a width of 1 or 2; char '{}' has a width of \
-                    {width:?}",
-                    cell.ch
-                ),
-            },
-            [rest @ .., cell] => {
-                self.cells = rest;
-                Some(*cell)
-            }
-            _ => None,
-        }
-    }
-}
-
-impl<'a> FusedIterator for Row<'a> {}
 
 #[derive(Debug)]
 pub struct TerminalWindow<'a> {
@@ -297,6 +98,15 @@ impl<'a> TerminalWindow<'a> {
 
     pub fn overdrawn(&self) -> Option<Box2<u16>> {
         self.overdrawn
+    }
+
+    pub fn rows(&self) -> Rows<'_> {
+        Rows {
+            width: self.size().width as usize,
+            term_width: self.term.size.width as usize,
+            cells: &self.term.cells
+                [self.cell_index(self.area.min)..=self.cell_index(self.area.max)],
+        }
     }
 
     fn mark_cell_overdrawn(&mut self, cell: Pos2<u16>) {
@@ -433,23 +243,258 @@ impl<'a> TerminalWindow<'a> {
         self
     }
 
-    pub fn subwindow(&mut self, area: Box2<u16>, f: impl FnOnce(&mut TerminalWindow)) {
+    pub fn subwindow<T>(&mut self, area: Box2<u16>, f: impl FnOnce(&mut TerminalWindow) -> T) -> T {
         let area = self.offset_area(area);
         let mut subwindow = TerminalWindow {
             area,
-            overdrawn: self.overdrawn.and_then(|o| o.intersection(area)),
+            overdrawn: self
+                .overdrawn
+                .and_then(|o| o.intersection(area))
+                .map(|o| o.translate_sub(area.min)),
             term: self.term,
         };
-        f(&mut subwindow);
+        let ret = f(&mut subwindow);
         if let Some(overdrawn) = subwindow.overdrawn {
             self.mark_area_overdrawn(overdrawn);
         }
+        ret
     }
 
-    pub fn add_widget<W: Widget>(&mut self, area: Box2<u16>, widget: &mut W) {
-        self.subwindow(area, |w| widget.render(w))
+    pub fn add_widget<W: Widget>(&mut self, area: Box2<u16>, widget: &mut W) -> &mut Self {
+        self.subwindow(area, |w| widget.render(w));
+        self
+    }
+
+    fn assert_equal_inner<R, E, I>(
+        &self,
+        template: &[R],
+        mut row_elements: impl FnMut(&R) -> I,
+        mut cell_to_template: impl FnMut(Cell) -> E,
+    ) where
+        I: Iterator<Item = E>,
+        E: PartialEq + Display,
+    {
+        let height = self.size().height;
+        let template_height = template.len();
+        assert_eq!(
+            height as usize, template_height,
+            "Height of terminal ({height}) should match height of template ({template_height})"
+        );
+        let mut mismatch = None;
+        let mut mismatch_count = 0;
+        for (y, (row, template_row)) in iter::zip(self.rows(), template).enumerate() {
+            let mut templates_iter = row_elements(template_row);
+            for (x, (cell, template)) in iter::zip(row.clone(), templates_iter.by_ref()).enumerate()
+            {
+                if !(cell_to_template(cell) == template) {
+                    mismatch_count += 1;
+                    if mismatch.is_none() {
+                        mismatch = Some(Pos2::new(x, y));
+                    }
+                }
+            }
+        }
+        if let Some(Pos2 { x, y }) = mismatch {
+            eprintln!("Template:");
+            for row in template {
+                for template in row_elements(row) {
+                    eprint!("{}", template);
+                }
+                eprintln!();
+            }
+            eprintln!();
+            eprintln!("Actual:");
+            for row in self.rows() {
+                for cell in row {
+                    eprint!("{}", cell_to_template(cell));
+                }
+                eprintln!();
+            }
+            eprintln!();
+            panic!("{mismatch_count} mismatches; First mismatch at column {x}, row {y}");
+        }
+    }
+
+    /// Asserts that all the chars in the cells of this are the same as the
+    /// chars in the template
+    pub fn assert_chars_equal<'b>(&self, template: impl AsRef<[&'b str]>) {
+        self.assert_equal_inner(template.as_ref(), |row| row.chars(), |cell| cell.ch);
     }
 }
+
+/// An iterator over the rows of a terminal window.  Rows are returned as
+/// iterators over their elements.
+#[derive(Debug, Clone)]
+pub struct Rows<'a> {
+    width: usize,
+    term_width: usize,
+    cells: &'a [Cell],
+}
+
+impl<'a> Iterator for Rows<'a> {
+    type Item = Row<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        (self.cells.len() >= self.width).then(|| {
+            let row = Row {
+                cells: &self.cells[..self.width],
+            };
+            self.cells = if self.cells.len() >= self.term_width {
+                &self.cells[self.term_width..]
+            } else {
+                &[]
+            };
+            row
+        })
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.len();
+        (len, Some(len))
+    }
+
+    fn count(self) -> usize
+    where
+        Self: Sized,
+    {
+        self.len()
+    }
+
+    fn last(mut self) -> Option<Self::Item>
+    where
+        Self: Sized,
+    {
+        self.next_back()
+    }
+
+    fn nth(&mut self, n: usize) -> Option<Self::Item> {
+        let discard_width = self.term_width * n;
+        if self.cells.len() >= discard_width {
+            (_, self.cells) = self.cells.split_at(discard_width);
+            self.next()
+        } else {
+            self.cells = &[];
+            None
+        }
+    }
+}
+
+impl<'a> ExactSizeIterator for Rows<'a> {
+    fn len(&self) -> usize {
+        (self.cells.len() + self.term_width - self.width) / self.term_width
+    }
+}
+
+impl<'a> DoubleEndedIterator for Rows<'a> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        (self.cells.len() >= self.width).then(|| {
+            if self.cells.len() > self.term_width {
+                let tail;
+                (self.cells, tail) = self.cells.split_at(self.cells.len() - self.term_width);
+                Row {
+                    cells: &tail[(self.term_width - self.width)..],
+                }
+            } else {
+                let row = Row { cells: self.cells };
+                self.cells = &[];
+                row
+            }
+        })
+    }
+
+    fn nth_back(&mut self, n: usize) -> Option<Self::Item> {
+        let discard_width = self.width * n;
+        if self.cells.len() >= discard_width {
+            (self.cells, _) = self.cells.split_at(self.cells.len() - discard_width);
+            self.next_back()
+        } else {
+            self.cells = &[];
+            None
+        }
+    }
+}
+
+impl<'a> FusedIterator for Rows<'a> {}
+
+/// An iterator over the cells in a row of a terminal window.  Double width
+/// cells are only returned once
+#[derive(Debug, Clone)]
+pub struct Row<'a> {
+    cells: &'a [Cell],
+}
+
+impl<'a> Iterator for Row<'a> {
+    type Item = Cell;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let [cell, rest @ ..] = self.cells {
+            match UnicodeWidthChar::width(cell.ch) {
+                Some(1) => {
+                    self.cells = rest;
+                    Some(*cell)
+                }
+                Some(2) => {
+                    if let [_, rest @ ..] = rest {
+                        self.cells = rest;
+                        Some(*cell)
+                    } else {
+                        self.cells = &[];
+                        Some(*cell)
+                    }
+                }
+                width @ _ => unreachable!(
+                    "Chars in cells should have a width of 1 or 2; char '{}' has a width of \
+                    {width:?}",
+                    cell.ch
+                ),
+            }
+        } else {
+            None
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.cells.len();
+        (len / 2 + len % 2, Some(len))
+    }
+
+    fn last(mut self) -> Option<Self::Item>
+    where
+        Self: Sized,
+    {
+        self.next_back()
+    }
+}
+
+impl<'a> DoubleEndedIterator for Row<'a> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        match self.cells {
+            [rest @ .., maybe_dw, cell] => match UnicodeWidthChar::width(maybe_dw.ch) {
+                Some(1) => {
+                    let [cells @ .., _] = self.cells else { unreachable!() };
+                    self.cells = cells;
+                    Some(*cell)
+                }
+                Some(2) => {
+                    self.cells = rest;
+                    Some(*maybe_dw)
+                }
+                width @ _ => unreachable!(
+                    "Chars in cells should have a width of 1 or 2; char '{}' has a width of \
+                    {width:?}",
+                    cell.ch
+                ),
+            },
+            [rest @ .., cell] => {
+                self.cells = rest;
+                Some(*cell)
+            }
+            _ => None,
+        }
+    }
+}
+
+impl<'a> FusedIterator for Row<'a> {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Cell {
@@ -580,89 +625,137 @@ char_type!(DoubleWidthChar, DoubleWidth);
 mod tests {
     use super::*;
 
+    fn term(mut f: impl FnMut(&mut TerminalWindow)) {
+        #[rustfmt::skip]
+        let mut term = Terminal {
+            size: Size2::new(4, 3),
+            cells: Box::new([
+                'a', 'b', 'c', 'd',
+                'e', 'f', 'g', 'h',
+                'i', 'j', 'k', 'l',
+            ].map(Into::into)),
+        };
+        println!("Small terminal");
+        term.edit().subwindow(Box2::new([0, 0], [3, 2]), &mut f);
+
+        #[rustfmt::skip]
+        let mut term = Terminal {
+            size: Size2::new(7, 8),
+            cells: Box::new([
+                '_', '_', '_', '_', '_', '_', '_',
+                '_', '_', '_', '_', '_', '_', '_',
+                '_', 'a', 'b', 'c', 'd', '_', '_',
+                '_', 'e', 'f', 'g', 'h', '_', '_',
+                '_', 'i', 'j', 'k', 'l', '_', '_',
+                '_', '_', '_', '_', '_', '_', '_',
+                '_', '_', '_', '_', '_', '_', '_',
+                '_', '_', '_', '_', '_', '_', '_',
+            ].map(Into::into)),
+        };
+        println!("Large terminal");
+        term.edit().subwindow(Box2::new([1, 2], [4, 4]), &mut f);
+    }
+
     #[test]
     fn rows() {
-        let cells = ['a', 'b', 'c', 'd', 'e', 'f'].map(Into::into);
-        let mut rows = Rows {
-            width: 2,
-            cells: &cells,
-        };
-        assert_eq!(rows.size_hint(), (3, Some(3)));
+        term(|term| {
+            let mut rows = term.rows();
 
-        assert_eq!(rows.next().unwrap().cells, &['a', 'b'].map(Into::into));
-        assert_eq!(rows.size_hint(), (2, Some(2)));
+            assert_eq!(rows.size_hint(), (3, Some(3)));
 
-        assert_eq!(rows.next().unwrap().cells, &['c', 'd'].map(Into::into));
-        assert_eq!(rows.size_hint(), (1, Some(1)));
+            assert_eq!(
+                rows.next().unwrap().cells,
+                &['a', 'b', 'c', 'd'].map(Into::into),
+            );
+            assert_eq!(rows.size_hint(), (2, Some(2)));
 
-        assert_eq!(rows.next().unwrap().cells, &['e', 'f'].map(Into::into));
-        assert_eq!(rows.size_hint(), (0, Some(0)));
+            assert_eq!(
+                rows.next().unwrap().cells,
+                &['e', 'f', 'g', 'h'].map(Into::into),
+            );
+            assert_eq!(rows.size_hint(), (1, Some(1)));
 
-        assert!(rows.next().is_none());
+            assert_eq!(
+                rows.next().unwrap().cells,
+                &['i', 'j', 'k', 'l'].map(Into::into),
+            );
+            assert_eq!(rows.size_hint(), (0, Some(0)));
+
+            assert!(rows.next().is_none());
+        });
     }
 
     #[test]
     fn rows_rev() {
-        let cells = ['a', 'b', 'c', 'd', 'e', 'f'].map(Into::into);
-        let mut rows = Rows {
-            width: 2,
-            cells: &cells,
-        }
-        .rev();
+        term(|term| {
+            let mut rows = term.rows().rev();
 
-        assert_eq!(rows.next().unwrap().cells, &['e', 'f'].map(Into::into));
-        assert_eq!(rows.next().unwrap().cells, &['c', 'd'].map(Into::into));
-        assert_eq!(rows.next().unwrap().cells, &['a', 'b'].map(Into::into));
-        assert!(rows.next().is_none());
+            assert_eq!(rows.size_hint(), (3, Some(3)));
+
+            assert_eq!(
+                rows.next().unwrap().cells,
+                &['i', 'j', 'k', 'l'].map(Into::into),
+            );
+            assert_eq!(rows.size_hint(), (2, Some(2)));
+
+            assert_eq!(
+                rows.next().unwrap().cells,
+                &['e', 'f', 'g', 'h'].map(Into::into),
+            );
+            assert_eq!(rows.size_hint(), (1, Some(1)));
+
+            assert_eq!(
+                rows.next().unwrap().cells,
+                &['a', 'b', 'c', 'd'].map(Into::into),
+            );
+            assert_eq!(rows.size_hint(), (0, Some(0)));
+
+            assert!(rows.next().is_none());
+        });
     }
 
     #[test]
     fn rows_nth() {
-        let cells = ['a', 'b', 'c', 'd', 'e', 'f'].map(Into::into);
-        let rows = Rows {
-            width: 2,
-            cells: &cells,
-        };
+        term(|term| {
+            let rows = term.rows();
 
-        assert_eq!(
-            rows.clone().nth(0).unwrap().cells,
-            &['a', 'b'].map(Into::into)
-        );
-        assert_eq!(
-            rows.clone().nth(1).unwrap().cells,
-            &['c', 'd'].map(Into::into)
-        );
-        assert_eq!(
-            rows.clone().nth(2).unwrap().cells,
-            &['e', 'f'].map(Into::into)
-        );
-        assert!(rows.clone().nth(3).is_none());
-        assert!(rows.clone().nth(256).is_none());
+            assert_eq!(
+                rows.clone().nth(0).unwrap().cells,
+                &['a', 'b', 'c', 'd'].map(Into::into),
+            );
+            assert_eq!(
+                rows.clone().nth(1).unwrap().cells,
+                &['e', 'f', 'g', 'h'].map(Into::into),
+            );
+            assert_eq!(
+                rows.clone().nth(2).unwrap().cells,
+                &['i', 'j', 'k', 'l'].map(Into::into),
+            );
+            assert!(rows.clone().nth(3).is_none());
+            assert!(rows.clone().nth(256).is_none());
+        });
     }
 
     #[test]
     fn rows_nth_back() {
-        let cells = ['a', 'b', 'c', 'd', 'e', 'f'].map(Into::into);
-        let rows = Rows {
-            width: 2,
-            cells: &cells,
-        }
-        .rev();
+        term(|term| {
+            let rows = term.rows();
 
-        assert_eq!(
-            rows.clone().nth(0).unwrap().cells,
-            &['e', 'f'].map(Into::into)
-        );
-        assert_eq!(
-            rows.clone().nth(1).unwrap().cells,
-            &['c', 'd'].map(Into::into)
-        );
-        assert_eq!(
-            rows.clone().nth(2).unwrap().cells,
-            &['a', 'b'].map(Into::into)
-        );
-        assert!(rows.clone().nth(3).is_none());
-        assert!(rows.clone().nth(256).is_none());
+            assert_eq!(
+                rows.clone().nth(0).unwrap().cells,
+                &['a', 'b', 'c', 'd'].map(Into::into),
+            );
+            assert_eq!(
+                rows.clone().nth(1).unwrap().cells,
+                &['e', 'f', 'g', 'h'].map(Into::into),
+            );
+            assert_eq!(
+                rows.clone().nth(2).unwrap().cells,
+                &['i', 'j', 'k', 'l'].map(Into::into),
+            );
+            assert!(rows.clone().nth(3).is_none());
+            assert!(rows.clone().nth(256).is_none());
+        });
     }
 
     #[test]
@@ -703,91 +796,224 @@ mod tests {
     }
 
     #[test]
-    fn set_cell() {
-        let mut term = Terminal::new([4, 2]);
-
-        let mut window = term.edit();
-        window.set_cell([1, 0], 'a');
-        assert_eq!(window.overdrawn(), Some(Box2::from(Pos2::new(1, 0))));
-
-        let mut window = term.edit();
-        window.set_cell([1, 1], '✨');
-        assert_eq!(window.overdrawn(), Some(Box2::new([1, 1], [2, 1])));
-
-        term.assert_chars_equal([" a  ", " ✨ "]);
-    }
-
-    #[test]
-    fn fill_horizontal() {
-        let mut term = Terminal::new([12, 3]);
-
-        let mut window = term.edit();
-        window.fill_horizontal([1, 0], 10, 'c');
-        assert_eq!(window.overdrawn(), Some(Box2::new([1, 0], [10, 0])));
-
-        let mut window = term.edit();
-        window.fill_horizontal([1, 1], 10, '✨');
-        assert_eq!(window.overdrawn(), Some(Box2::new([1, 1], [10, 1])));
-
-        let mut window = term.edit();
-        window.fill_horizontal([1, 2], 9, '✨');
-        assert_eq!(window.overdrawn(), Some(Box2::new([1, 2], [8, 2])));
-
-        term.assert_chars_equal([" cccccccccc ", " ✨✨✨✨✨ ", " ✨✨✨✨   "]);
-    }
-
-    #[test]
-    fn fill_vertical() {
-        let mut term = Terminal::new([3, 12]);
-
-        let mut window = term.edit();
-        window.fill_vertical([1, 1], 10, '✨');
-        assert_eq!(window.overdrawn(), Some(Box2::new([1, 1], [1, 10])));
-
-        let mut window = term.edit();
-        window.fill_vertical([0, 1], 10, 'c');
-        assert_eq!(window.overdrawn(), Some(Box2::new([0, 1], [0, 10])));
-
-        term.assert_chars_equal([
-            "   ", "c✨", "c✨", "c✨", "c✨", "c✨", "c✨", "c✨", "c✨", "c✨", "c✨", "   ",
-        ]);
-    }
-
-    #[test]
-    fn fill_area() {
-        let mut term = Terminal::new([16, 5]);
-
-        let mut window = term.edit();
-        window.fill_area(Box2::new([1, 1], [4, 3]), 'c');
-        assert_eq!(window.overdrawn(), Some(Box2::new([1, 1], [4, 3])));
-
-        let mut window = term.edit();
-        window.fill_area(Box2::new([6, 1], [9, 3]), '✨');
-        assert_eq!(window.overdrawn(), Some(Box2::new([6, 1], [9, 3])));
-
-        let mut window = term.edit();
-        window.fill_area(Box2::new([11, 1], [13, 3]), '✨');
-        assert_eq!(window.overdrawn(), Some(Box2::new([11, 1], [12, 3])));
-
-        term.assert_chars_equal([
-            "                ",
-            " cccc ✨✨ ✨   ",
-            " cccc ✨✨ ✨   ",
-            " cccc ✨✨ ✨   ",
-            "                ",
-        ]);
-    }
-
-    #[test]
-    fn subwindow() {
-        let mut term = Terminal::new([5, 5]);
-        let mut window = term.edit();
-
-        window.subwindow(Box2::new([1, 2], [4, 4]), |w| {
-            w.set_cell([1, 1], 'a');
+    fn set_cell_sw_center() {
+        Terminal::test_widget([3, 3], |term| {
+            term.set_cell([1, 1], 'c');
+            term.assert_chars_equal(["   ", " c ", "   "]);
+            assert_eq!(term.overdrawn(), Some(Box2::from_pos([1, 1])));
         });
+    }
 
-        assert_eq!(window.overdrawn(), Some(Box2::new([2, 3], [2, 3])));
-        term.assert_chars_equal(["     ", "     ", "     ", "  a  ", "     "]);
+    #[test]
+    fn set_cell_dw_center() {
+        Terminal::test_widget([4, 3], |term| {
+            term.set_cell([1, 1], '✨');
+            term.assert_chars_equal(["    ", " ✨ ", "    "]);
+            assert_eq!(term.overdrawn(), Some(Box2::new([1, 1], [2, 1])));
+        });
+    }
+
+    #[test]
+    fn set_cell_sw_corners() {
+        Terminal::test_widget([4, 4], |term| {
+            term.set_cell([0, 0], 'a')
+                .set_cell([3, 0], 'b')
+                .set_cell([0, 3], 'c')
+                .set_cell([3, 3], 'd');
+
+            term.assert_chars_equal(["a  b", "    ", "    ", "c  d"]);
+            assert_eq!(term.overdrawn(), Some(Box2::new([0, 0], [3, 3])));
+        });
+    }
+
+    #[test]
+    fn set_cell_dw_corners() {
+        Terminal::test_widget([8, 4], |term| {
+            term.set_cell([0, 0], '✨')
+                .set_cell([0, 6], '🌈')
+                .set_cell([3, 0], '全')
+                .set_cell([3, 6], '角');
+
+            term.assert_chars_equal(["✨    🌈", "        ", "        ", "全    角"]);
+            assert_eq!(term.overdrawn(), Some(Box2::new([0, 0], [7, 3])));
+        });
+    }
+
+    #[test]
+    fn fill_horizontal_sw_center() {
+        Terminal::test_widget([12, 3], |term| {
+            term.fill_horizontal([1, 1], 10, 'c');
+
+            term.assert_chars_equal(["            ", " cccccccccc ", "            "]);
+            assert_eq!(term.overdrawn(), Some(Box2::new([1, 1], [10, 1])));
+        });
+    }
+
+    #[test]
+    fn fill_horizontal_dw_center() {
+        Terminal::test_widget([12, 3], |term| {
+            term.fill_horizontal([1, 1], 10, '✨');
+
+            term.assert_chars_equal(["            ", " ✨✨✨✨✨ ", "            "]);
+            assert_eq!(term.overdrawn(), Some(Box2::new([1, 1], [10, 1])));
+        });
+    }
+
+    #[test]
+    fn fill_horizontal_dw_center_odd_width() {
+        Terminal::test_widget([11, 3], |term| {
+            term.fill_horizontal([1, 1], 9, '✨');
+            term.assert_chars_equal(["           ", " ✨✨✨✨  ", "           "]);
+            assert_eq!(term.overdrawn(), Some(Box2::new([1, 1], [8, 1])));
+        });
+    }
+
+    #[test]
+    fn fill_horizontal_sw_edges() {
+        Terminal::test_widget([12, 3], |term| {
+            term.fill_horizontal([0, 0], 12, 'a')
+                .fill_horizontal([0, 2], 12, 'b');
+
+            term.assert_chars_equal(["aaaaaaaaaaaa", "            ", "bbbbbbbbbbbb"]);
+            assert_eq!(term.overdrawn(), Some(Box2::new([0, 0], [11, 2])));
+        });
+    }
+
+    #[test]
+    fn fill_horizontal_dw_edges() {
+        Terminal::test_widget([12, 3], |term| {
+            term.fill_horizontal([0, 0], 12, '✨')
+                .fill_horizontal([0, 2], 12, '全');
+
+            term.assert_chars_equal(["✨✨✨✨✨✨", "            ", "全全全全全全"]);
+            assert_eq!(term.overdrawn(), Some(Box2::new([0, 0], [11, 2])));
+        });
+    }
+
+    #[test]
+    fn fill_horizontal_dw_edges_odd_width() {
+        Terminal::test_widget([11, 3], |term| {
+            term.fill_horizontal([0, 0], 11, '✨')
+                .fill_horizontal([0, 2], 11, '全');
+
+            term.assert_chars_equal(["✨✨✨✨✨ ", "            ", "全全全全全 "]);
+            assert_eq!(term.overdrawn(), Some(Box2::new([0, 0], [9, 2])));
+        });
+    }
+
+    #[test]
+    fn fill_vertical_sw_center() {
+        Terminal::test_widget([3, 12], |term| {
+            term.fill_vertical([1, 1], 10, 'c');
+
+            term.assert_chars_equal([
+                "   ", " c ", " c ", " c ", " c ", " c ", " c ", " c ", " c ", " c ", " c ", "   ",
+            ]);
+            assert_eq!(term.overdrawn(), Some(Box2::new([1, 1], [1, 10])));
+        });
+    }
+
+    #[test]
+    fn fill_vertical_dw_center() {
+        Terminal::test_widget([4, 12], |term| {
+            term.fill_vertical([1, 1], 10, '✨');
+
+            term.assert_chars_equal([
+                "    ", " ✨ ", " ✨ ", " ✨ ", " ✨ ", " ✨ ", " ✨ ", " ✨ ", " ✨ ", " ✨ ",
+                " ✨ ", "    ",
+            ]);
+            assert_eq!(term.overdrawn(), Some(Box2::new([1, 1], [2, 10])));
+        });
+    }
+
+    #[test]
+    fn fill_vertical_sw_edges() {
+        Terminal::test_widget([3, 12], |term| {
+            term.fill_vertical([0, 0], 12, 'a')
+                .fill_vertical([2, 0], 12, 'b');
+
+            term.assert_chars_equal([
+                "a b", "a b", "a b", "a b", "a b", "a b", "a b", "a b", "a b", "a b", "a b", "a b",
+            ]);
+            assert_eq!(term.overdrawn(), Some(Box2::new([0, 0], [2, 11])));
+        });
+    }
+
+    #[test]
+    fn fill_vertical_dw_edges() {
+        Terminal::test_widget([5, 12], |term| {
+            term.fill_vertical([0, 0], 12, '✨')
+                .fill_vertical([3, 0], 12, '全');
+
+            term.assert_chars_equal([
+                "✨ 全", "✨ 全", "✨ 全", "✨ 全", "✨ 全", "✨ 全", "✨ 全", "✨ 全", "✨ 全",
+                "✨ 全", "✨ 全", "✨ 全",
+            ]);
+            assert_eq!(term.overdrawn(), Some(Box2::new([0, 0], [4, 11])));
+        });
+    }
+
+    #[test]
+    fn fill_area_sw_center() {
+        Terminal::test_widget([8, 5], |term| {
+            let area = Box2::new([1, 1], [6, 3]);
+            term.fill_area(area, 'c');
+
+            term.assert_chars_equal(["        ", " cccccc ", " cccccc ", " cccccc ", "        "]);
+            assert_eq!(term.overdrawn(), Some(area));
+        });
+    }
+
+    #[test]
+    fn fill_area_dw_center() {
+        Terminal::test_widget([8, 5], |term| {
+            let area = Box2::new([1, 1], [6, 3]);
+            term.fill_area(area, '✨');
+
+            term.assert_chars_equal(["        ", " ✨✨✨ ", " ✨✨✨ ", " ✨✨✨ ", "        "]);
+            assert_eq!(term.overdrawn(), Some(area));
+        });
+    }
+
+    #[test]
+    fn fill_area_dw_center_odd_width() {
+        Terminal::test_widget([7, 5], |term| {
+            term.fill_area(Box2::new([1, 1], [5, 3]), '✨');
+
+            term.assert_chars_equal(["       ", " ✨✨  ", " ✨✨  ", " ✨✨  ", "       "]);
+            assert_eq!(term.overdrawn(), Some(Box2::new([1, 1], [4, 3])));
+        });
+    }
+
+    #[test]
+    fn fill_area_sw_edges() {
+        Terminal::test_widget([8, 5], |term| {
+            let area = Box2::new([0, 0], [7, 4]);
+            term.fill_area(area, 'c');
+
+            term.assert_chars_equal(["cccccccc", "cccccccc", "cccccccc", "cccccccc", "cccccccc"]);
+            assert_eq!(term.overdrawn(), Some(area));
+        });
+    }
+
+    #[test]
+    fn fill_area_dw_edges() {
+        Terminal::test_widget([8, 5], |term| {
+            let area = Box2::new([0, 0], [7, 4]);
+            term.fill_area(area, '✨');
+
+            term.assert_chars_equal(["✨✨✨✨", "✨✨✨✨", "✨✨✨✨", "✨✨✨✨", "✨✨✨✨"]);
+            assert_eq!(term.overdrawn(), Some(area));
+        });
+    }
+
+    #[test]
+    fn fill_area_dw_edges_odd_width() {
+        Terminal::test_widget([7, 5], |term| {
+            term.fill_area(Box2::new([0, 0], [6, 4]), '✨');
+
+            term.assert_chars_equal(["✨✨✨ ", "✨✨✨ ", "✨✨✨ ", "✨✨✨ ", "✨✨✨ "]);
+            assert_eq!(term.overdrawn(), Some(Box2::new([0, 0], [5, 4])))
+        })
     }
 }

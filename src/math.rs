@@ -214,6 +214,13 @@ impl<T> Box2<T> {
         }
     }
 
+    pub fn from_pos(pos: impl Into<Pos2<T>>) -> Self
+    where
+        T: Clone,
+    {
+        Self::from(pos.into())
+    }
+
     pub fn translate(self, offset: impl Into<Vec2<T>>) -> Box2<T::Output>
     where
         T: Add<T> + Copy,
@@ -222,6 +229,17 @@ impl<T> Box2<T> {
         Box2 {
             min: self.min + offset,
             max: self.max + offset,
+        }
+    }
+
+    pub fn translate_sub(self, offset: impl Into<Vec2<T>>) -> Box2<T::Output>
+    where
+        T: Sub<T> + Copy,
+    {
+        let offset = offset.into();
+        Box2 {
+            min: self.min - offset,
+            max: self.max - offset,
         }
     }
 
