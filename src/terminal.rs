@@ -248,9 +248,6 @@ impl<'a> TerminalWindow<'a> {
     /// Repeats a cell to fill the specified area.
     pub fn fill_area(&mut self, area: Box2<u16>, cell: impl Into<Cell>) -> &mut Self {
         let size = (area.max.to_vec() + Vec2::splat(1) - area.min.to_vec()).to_size();
-        if size.width < 1 || size.height < 1 {
-            return self;
-        }
 
         let cell = cell.into();
         let cell_index = self.cell_index(area.min);
@@ -258,7 +255,7 @@ impl<'a> TerminalWindow<'a> {
             .step_by(self.term.size.width as usize)
             .take(size.height as usize);
         match CharType::classify(cell.ch) {
-            CharType::SingleWidth(_) => {
+            CharType::SingleWidth(_) if size.width >= 1 && size.height >= 1 => {
                 self.mark_area_overdrawn(area);
                 for cell_index in iter {
                     for cell_index in cell_index..(cell_index + size.width as usize) {
@@ -266,7 +263,7 @@ impl<'a> TerminalWindow<'a> {
                     }
                 }
             }
-            CharType::DoubleWidth(_) => {
+            CharType::DoubleWidth(_) if size.width >= 2 && size.height >= 1 => {
                 let offset = size.width % 2;
                 let mut area = area;
                 area.max.x -= offset;
