@@ -72,4 +72,14 @@ mod tests {
             ]);
         });
     }
+
+    #[test]
+    fn stress_sw() {
+        Terminal::stress_widget(FillArea::with_char('c'));
+    }
+
+    #[test]
+    fn stress_dw() {
+        Terminal::stress_widget(FillArea::with_char('✨'));
+    }
 }

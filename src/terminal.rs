@@ -56,7 +56,7 @@ impl Terminal {
         let size = size.into();
 
         let mut term = Self::new(size);
-        println!("Small terminal");
+        eprintln!("Small terminal");
         term.edit(overdrawn)
             .subwindow(Box2::new([0, 0], size.to_vec() - Vec2::splat(1)), &mut f);
 
@@ -65,8 +65,28 @@ impl Terminal {
 
         let mut term = Self::new(full_size);
         let mut window = term.edit(overdrawn);
-        println!("Large terminal");
+        eprintln!("Large terminal");
         window.subwindow(inner_area, &mut f);
+    }
+
+    /// Renders a widget in a wide variety of conditions to see if it panics.
+    /// Not intended to be used outside of tests.
+    ///
+    /// # Panics
+    ///
+    /// Panics if rendering the widget panics.
+    pub fn stress_widget<W: Widget>(mut widget: W) {
+        let sizes = [1, 2, 3, 4, 5, 8, 16, 17, 32, 33, 64, 65, 128, 129, 256, 257];
+
+        let mut term = Terminal::new(Size2::splat(*sizes.last().unwrap()));
+        let mut term = term.edit(Overdrawn::All);
+
+        for width in sizes {
+            for height in sizes {
+                eprintln!("{width}x{height}");
+                term.add_widget(Box2::new([0, 0], [width - 1, height - 1]), &mut widget);
+            }
+        }
     }
 }
 
@@ -663,7 +683,7 @@ mod tests {
                 'i', 'j', 'k', 'l',
             ].map(Into::into)),
         };
-        println!("Small terminal");
+        eprintln!("Small terminal");
         term.edit(Overdrawn::None)
             .subwindow(Box2::new([0, 0], [3, 2]), &mut f);
 
@@ -681,7 +701,7 @@ mod tests {
                 '_', '_', '_', '_', '_', '_', '_',
             ].map(Into::into)),
         };
-        println!("Large terminal");
+        eprintln!("Large terminal");
         term.edit(Overdrawn::None)
             .subwindow(Box2::new([1, 2], [4, 4]), &mut f);
     }
