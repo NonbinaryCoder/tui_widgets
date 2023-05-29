@@ -28,10 +28,15 @@ impl Terminal {
         }
     }
 
-    pub fn edit(&mut self) -> TerminalWindow<'_> {
+    pub fn edit(&mut self, overdrawn: Overdrawn) -> TerminalWindow<'_> {
+        let area = Box2::new([0, 0], self.size.to_vec().map(|v| v.saturating_sub(1)));
         TerminalWindow {
-            area: Box2::new([0, 0], self.size.to_vec().map(|v| v.saturating_sub(1))),
-            overdrawn: None,
+            area,
+            overdrawn: match overdrawn {
+                Overdrawn::None => None,
+                Overdrawn::Area(overdrawn) => area.intersection(overdrawn),
+                Overdrawn::All => Some(area),
+            },
             term: self,
         }
     }
@@ -43,22 +48,33 @@ impl Terminal {
 
     /// Creates a terminal window that can be used to test whether or not
     /// widgets work as intended.  Not intended to be used outside of tests.
-    pub fn test_widget(size: impl Into<Size2<u16>>, mut f: impl FnMut(&mut TerminalWindow)) {
+    pub fn test_widget(
+        size: impl Into<Size2<u16>>,
+        overdrawn: Overdrawn,
+        mut f: impl FnMut(&mut TerminalWindow),
+    ) {
         let size = size.into();
 
         let mut term = Self::new(size);
         println!("Small terminal");
-        term.edit()
+        term.edit(overdrawn)
             .subwindow(Box2::new([0, 0], size.to_vec() - Vec2::splat(1)), &mut f);
 
         let inner_area = Box2::new([1, 2], size.to_vec() + Vec2::new(1, 2) - Vec2::splat(1));
         let full_size = size + Vec2::new(1, 2) + Vec2::new(3, 4);
 
         let mut term = Self::new(full_size);
-        let mut window = term.edit();
+        let mut window = term.edit(overdrawn);
         println!("Large terminal");
         window.subwindow(inner_area, &mut f);
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Overdrawn {
+    None,
+    Area(Box2<u16>),
+    All,
 }
 
 #[derive(Debug)]
@@ -642,7 +658,8 @@ mod tests {
             ].map(Into::into)),
         };
         println!("Small terminal");
-        term.edit().subwindow(Box2::new([0, 0], [3, 2]), &mut f);
+        term.edit(Overdrawn::None)
+            .subwindow(Box2::new([0, 0], [3, 2]), &mut f);
 
         #[rustfmt::skip]
         let mut term = Terminal {
@@ -659,7 +676,8 @@ mod tests {
             ].map(Into::into)),
         };
         println!("Large terminal");
-        term.edit().subwindow(Box2::new([1, 2], [4, 4]), &mut f);
+        term.edit(Overdrawn::None)
+            .subwindow(Box2::new([1, 2], [4, 4]), &mut f);
     }
 
     #[test]
@@ -803,7 +821,7 @@ mod tests {
 
     #[test]
     fn set_cell_sw_center() {
-        Terminal::test_widget([3, 3], |term| {
+        Terminal::test_widget([3, 3], Overdrawn::None, |term| {
             term.set_cell([1, 1], 'c');
             term.assert_chars_equal(["   ", " c ", "   "]);
             assert_eq!(term.overdrawn(), Some(Box2::from_pos([1, 1])));
@@ -812,7 +830,7 @@ mod tests {
 
     #[test]
     fn set_cell_dw_center() {
-        Terminal::test_widget([4, 3], |term| {
+        Terminal::test_widget([4, 3], Overdrawn::None, |term| {
             term.set_cell([1, 1], '✨');
             term.assert_chars_equal(["    ", " ✨ ", "    "]);
             assert_eq!(term.overdrawn(), Some(Box2::new([1, 1], [2, 1])));
@@ -821,7 +839,7 @@ mod tests {
 
     #[test]
     fn set_cell_sw_corners() {
-        Terminal::test_widget([4, 4], |term| {
+        Terminal::test_widget([4, 4], Overdrawn::None, |term| {
             term.set_cell([0, 0], 'a')
                 .set_cell([3, 0], 'b')
                 .set_cell([0, 3], 'c')
@@ -834,7 +852,7 @@ mod tests {
 
     #[test]
     fn set_cell_dw_corners() {
-        Terminal::test_widget([8, 4], |term| {
+        Terminal::test_widget([8, 4], Overdrawn::None, |term| {
             term.set_cell([0, 0], '✨')
                 .set_cell([6, 0], '🌈')
                 .set_cell([0, 3], '全')
@@ -847,7 +865,7 @@ mod tests {
 
     #[test]
     fn fill_horizontal_sw_center() {
-        Terminal::test_widget([12, 3], |term| {
+        Terminal::test_widget([12, 3], Overdrawn::None, |term| {
             term.fill_horizontal([1, 1], 10, 'c');
 
             term.assert_chars_equal(["            ", " cccccccccc ", "            "]);
@@ -857,7 +875,7 @@ mod tests {
 
     #[test]
     fn fill_horizontal_dw_center() {
-        Terminal::test_widget([12, 3], |term| {
+        Terminal::test_widget([12, 3], Overdrawn::None, |term| {
             term.fill_horizontal([1, 1], 10, '✨');
 
             term.assert_chars_equal(["            ", " ✨✨✨✨✨ ", "            "]);
@@ -867,7 +885,7 @@ mod tests {
 
     #[test]
     fn fill_horizontal_dw_center_odd_width() {
-        Terminal::test_widget([11, 3], |term| {
+        Terminal::test_widget([11, 3], Overdrawn::None, |term| {
             term.fill_horizontal([1, 1], 9, '✨');
             term.assert_chars_equal(["           ", " ✨✨✨✨  ", "           "]);
             assert_eq!(term.overdrawn(), Some(Box2::new([1, 1], [8, 1])));
@@ -876,7 +894,7 @@ mod tests {
 
     #[test]
     fn fill_horizontal_sw_edges() {
-        Terminal::test_widget([12, 3], |term| {
+        Terminal::test_widget([12, 3], Overdrawn::None, |term| {
             term.fill_horizontal([0, 0], 12, 'a')
                 .fill_horizontal([0, 2], 12, 'b');
 
@@ -887,7 +905,7 @@ mod tests {
 
     #[test]
     fn fill_horizontal_dw_edges() {
-        Terminal::test_widget([12, 3], |term| {
+        Terminal::test_widget([12, 3], Overdrawn::None, |term| {
             term.fill_horizontal([0, 0], 12, '✨')
                 .fill_horizontal([0, 2], 12, '全');
 
@@ -898,7 +916,7 @@ mod tests {
 
     #[test]
     fn fill_horizontal_dw_edges_odd_width() {
-        Terminal::test_widget([11, 3], |term| {
+        Terminal::test_widget([11, 3], Overdrawn::None, |term| {
             term.fill_horizontal([0, 0], 11, '✨')
                 .fill_horizontal([0, 2], 11, '全');
 
@@ -909,7 +927,7 @@ mod tests {
 
     #[test]
     fn fill_vertical_sw_center() {
-        Terminal::test_widget([3, 12], |term| {
+        Terminal::test_widget([3, 12], Overdrawn::None, |term| {
             term.fill_vertical([1, 1], 10, 'c');
 
             term.assert_chars_equal([
@@ -921,7 +939,7 @@ mod tests {
 
     #[test]
     fn fill_vertical_dw_center() {
-        Terminal::test_widget([4, 12], |term| {
+        Terminal::test_widget([4, 12], Overdrawn::None, |term| {
             term.fill_vertical([1, 1], 10, '✨');
 
             term.assert_chars_equal([
@@ -934,7 +952,7 @@ mod tests {
 
     #[test]
     fn fill_vertical_sw_edges() {
-        Terminal::test_widget([3, 12], |term| {
+        Terminal::test_widget([3, 12], Overdrawn::None, |term| {
             term.fill_vertical([0, 0], 12, 'a')
                 .fill_vertical([2, 0], 12, 'b');
 
@@ -947,7 +965,7 @@ mod tests {
 
     #[test]
     fn fill_vertical_dw_edges() {
-        Terminal::test_widget([5, 12], |term| {
+        Terminal::test_widget([5, 12], Overdrawn::None, |term| {
             term.fill_vertical([0, 0], 12, '✨')
                 .fill_vertical([3, 0], 12, '全');
 
@@ -961,7 +979,7 @@ mod tests {
 
     #[test]
     fn fill_area_sw_center() {
-        Terminal::test_widget([8, 5], |term| {
+        Terminal::test_widget([8, 5], Overdrawn::None, |term| {
             let area = Box2::new([1, 1], [6, 3]);
             term.fill_area(area, 'c');
 
@@ -972,7 +990,7 @@ mod tests {
 
     #[test]
     fn fill_area_dw_center() {
-        Terminal::test_widget([8, 5], |term| {
+        Terminal::test_widget([8, 5], Overdrawn::None, |term| {
             let area = Box2::new([1, 1], [6, 3]);
             term.fill_area(area, '✨');
 
@@ -983,7 +1001,7 @@ mod tests {
 
     #[test]
     fn fill_area_dw_center_odd_width() {
-        Terminal::test_widget([7, 5], |term| {
+        Terminal::test_widget([7, 5], Overdrawn::None, |term| {
             term.fill_area(Box2::new([1, 1], [5, 3]), '✨');
 
             term.assert_chars_equal(["       ", " ✨✨  ", " ✨✨  ", " ✨✨  ", "       "]);
@@ -993,7 +1011,7 @@ mod tests {
 
     #[test]
     fn fill_area_sw_edges() {
-        Terminal::test_widget([8, 5], |term| {
+        Terminal::test_widget([8, 5], Overdrawn::None, |term| {
             let area = Box2::new([0, 0], [7, 4]);
             term.fill_area(area, 'c');
 
@@ -1004,7 +1022,7 @@ mod tests {
 
     #[test]
     fn fill_area_dw_edges() {
-        Terminal::test_widget([8, 5], |term| {
+        Terminal::test_widget([8, 5], Overdrawn::None, |term| {
             let area = Box2::new([0, 0], [7, 4]);
             term.fill_area(area, '✨');
 
@@ -1015,7 +1033,7 @@ mod tests {
 
     #[test]
     fn fill_area_dw_edges_odd_width() {
-        Terminal::test_widget([7, 5], |term| {
+        Terminal::test_widget([7, 5], Overdrawn::None, |term| {
             term.fill_area(Box2::new([0, 0], [6, 4]), '✨');
 
             term.assert_chars_equal(["✨✨✨ ", "✨✨✨ ", "✨✨✨ ", "✨✨✨ ", "✨✨✨ "]);
