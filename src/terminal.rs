@@ -266,9 +266,9 @@ impl<'a> TerminalWindow<'a> {
     }
 
     pub fn subwindow<T>(&mut self, area: Box2<u16>, f: impl FnOnce(&mut TerminalWindow) -> T) -> T {
-        let area = self.offset_area(area);
+        let offset_area = self.offset_area(area);
         let mut subwindow = TerminalWindow {
-            area,
+            area: offset_area,
             overdrawn: self
                 .overdrawn
                 .and_then(|o| o.intersection(area))
@@ -284,6 +284,12 @@ impl<'a> TerminalWindow<'a> {
 
     pub fn add_widget<W: Widget>(&mut self, area: Box2<u16>, widget: &mut W) -> &mut Self {
         self.subwindow(area, |w| widget.render(w));
+        self
+    }
+
+    /// Fills the entirety of this window with the provided widget.
+    pub fn fill_widget<W: Widget>(&mut self, widget: &mut W) -> &mut Self {
+        widget.render(self);
         self
     }
 

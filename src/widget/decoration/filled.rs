@@ -23,3 +23,53 @@ impl Widget for Filled {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::terminal::{Overdrawn, Terminal};
+
+    use super::*;
+
+    #[test]
+    fn renders_sw() {
+        Terminal::test_widget([8, 6], Overdrawn::All, |term| {
+            term.fill_widget(&mut Filled::with_char('c'));
+
+            term.assert_chars_equal([
+                "cccccccc", "cccccccc", "cccccccc", "cccccccc", "cccccccc", "cccccccc",
+            ]);
+        })
+    }
+
+    #[test]
+    fn renders_dw() {
+        Terminal::test_widget([8, 6], Overdrawn::All, |term| {
+            term.fill_widget(&mut Filled::with_char('✨'));
+
+            term.assert_chars_equal([
+                "✨✨✨✨",
+                "✨✨✨✨",
+                "✨✨✨✨",
+                "✨✨✨✨",
+                "✨✨✨✨",
+                "✨✨✨✨",
+            ]);
+        });
+    }
+
+    #[test]
+    fn renders_dw_odd_width() {
+        Terminal::test_widget([7, 6], Overdrawn::All, |term| {
+            term.fill_widget(&mut Filled::with_char('✨'));
+
+            term.assert_chars_equal([
+                "✨✨✨ ",
+                "✨✨✨ ",
+                "✨✨✨ ",
+                "✨✨✨ ",
+                "✨✨✨ ",
+                "✨✨✨ ",
+            ]);
+        });
+    }
+}
