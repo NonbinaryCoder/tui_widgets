@@ -4,9 +4,9 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Filled(Cell);
+pub struct FillArea(Cell);
 
-impl Filled {
+impl FillArea {
     pub fn with_char(ch: char) -> Self {
         Self(ch.into())
     }
@@ -16,7 +16,7 @@ impl Filled {
     }
 }
 
-impl Widget for Filled {
+impl Widget for FillArea {
     fn render(&mut self, terminal: &mut TerminalWindow) {
         if let Some(overdrawn) = terminal.overdrawn() {
             terminal.fill_area(overdrawn, self.0);
@@ -33,7 +33,7 @@ mod tests {
     #[test]
     fn renders_sw() {
         Terminal::test_widget([8, 6], Overdrawn::All, |term| {
-            term.fill_widget(&mut Filled::with_char('c'));
+            term.fill_widget(&mut FillArea::with_char('c'));
 
             term.assert_chars_equal([
                 "cccccccc", "cccccccc", "cccccccc", "cccccccc", "cccccccc", "cccccccc",
@@ -44,7 +44,7 @@ mod tests {
     #[test]
     fn renders_dw() {
         Terminal::test_widget([8, 6], Overdrawn::All, |term| {
-            term.fill_widget(&mut Filled::with_char('✨'));
+            term.fill_widget(&mut FillArea::with_char('✨'));
 
             term.assert_chars_equal([
                 "✨✨✨✨",
@@ -60,7 +60,7 @@ mod tests {
     #[test]
     fn renders_dw_odd_width() {
         Terminal::test_widget([7, 6], Overdrawn::All, |term| {
-            term.fill_widget(&mut Filled::with_char('✨'));
+            term.fill_widget(&mut FillArea::with_char('✨'));
 
             term.assert_chars_equal([
                 "✨✨✨ ",
