@@ -1,3 +1,5 @@
+use std::ops::Add;
+
 use crate::{math::Size2, terminal::TerminalWindow};
 
 pub mod decoration;
@@ -24,8 +26,8 @@ pub trait Widget {
     ///
     /// Note that widgets may be rendered with a size that is smaller or larger
     /// than requested.
-    fn desired_size(&self) -> Size2<Range<u16>> {
-        Size2::splat(Range::Any)
+    fn desired_size(&self) -> Size2<Size<u16>> {
+        Size2::splat(Size::Any)
     }
 }
 
@@ -34,7 +36,7 @@ impl Widget for Box<dyn Widget> {
         (**self).render(terminal)
     }
 
-    fn desired_size(&self) -> Size2<Range<u16>> {
+    fn desired_size(&self) -> Size2<Size<u16>> {
         (**self).desired_size()
     }
 }
@@ -54,16 +56,42 @@ where
 
 /// A size range.  Values are inclusive.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Range<T> {
+pub enum Size<T> {
     Exactly(T),
-    /// A size of `self.0` or higher.
     AtLeast(T),
-    /// A size of `self.0` or lower.
-    AtMost(T),
-    /// A size of `min`, `max`, or somewhere in between
-    Range {
-        min: T,
-        max: T,
-    },
     Any,
+}
+
+impl<T> Size<T> {
+    pub fn intersection(self, other: Self) -> Option<Self>
+    where
+        T: Ord,
+    {
+        match (self, other) {
+            (Size::Any, size) | (size, Size::Any) => Some(size),
+            (Size::Exactly(a), Size::Exactly(b)) => (a == b).then_some(Size::Exactly(a)),
+            (Size::AtLeast(a), Size::AtLeast(b)) => Some(Size::AtLeast(a.max(b))),
+            (Size::Exactly(size), Size::AtLeast(min))
+            | (Size::AtLeast(min), Size::Exactly(size)) => {
+                (size >= min).then_some(Size::Exactly(size))
+            }
+        }
+    }
+}
+
+impl<T: Add<Output = T>> Add for Size<T> {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        match (self, rhs) {
+            (Size::Exactly(a), Size::Exactly(b)) => Size::Exactly(a + b),
+            (Size::Exactly(a), Size::AtLeast(b)) | (Size::AtLeast(b), Size::Exactly(a)) => {
+                Size::AtLeast(a + b)
+            }
+            (Size::Exactly(size) | Size::AtLeast(size), Size::Any)
+            | (Size::Any, Size::Exactly(size) | Size::AtLeast(size)) => Size::AtLeast(size),
+            (Size::AtLeast(a), Size::AtLeast(b)) => Size::AtLeast(a + b),
+            (Size::Any, Size::Any) => Size::Any,
+        }
+    }
 }
