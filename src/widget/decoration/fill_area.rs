@@ -1,6 +1,6 @@
 use crate::{
     terminal::{Cell, TerminalWindow},
-    widget::{style::Color, Widget},
+    widget::{style::Color, AreaFillingWidget},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -16,7 +16,7 @@ impl FillArea {
     }
 }
 
-impl Widget for FillArea {
+impl AreaFillingWidget for FillArea {
     fn render(&mut self, terminal: &mut TerminalWindow) {
         if let Some(overdrawn) = terminal.overdrawn() {
             terminal.fill_area(overdrawn, self.0);
@@ -75,11 +75,11 @@ mod tests {
 
     #[test]
     fn stress_sw() {
-        Terminal::stress_widget(FillArea::with_char('c'));
+        Terminal::stress_area_filling_widget(FillArea::with_char('c'));
     }
 
     #[test]
     fn stress_dw() {
-        Terminal::stress_widget(FillArea::with_char('✨'));
+        Terminal::stress_area_filling_widget(FillArea::with_char('✨'));
     }
 }

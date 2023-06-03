@@ -9,7 +9,7 @@ use crate::{
     math::{Box2, Pos2, Size2, Vec2},
     widget::{
         style::{Color, Colors, Formatting},
-        Widget,
+        AreaFillingWidget,
     },
 };
 
@@ -75,7 +75,7 @@ impl Terminal {
     /// # Panics
     ///
     /// Panics if rendering the widget panics.
-    pub fn stress_widget<W: Widget>(mut widget: W) {
+    pub fn stress_area_filling_widget<W: AreaFillingWidget>(mut widget: W) {
         let sizes = [1, 2, 3, 4, 5, 8, 16, 17, 32, 33, 64, 65, 128, 129, 256, 257];
 
         let mut term = Terminal::new(Size2::splat(*sizes.last().unwrap()));
@@ -84,7 +84,9 @@ impl Terminal {
         for width in sizes {
             for height in sizes {
                 eprintln!("{width}x{height}");
-                term.add_widget(Box2::new([0, 0], [width - 1, height - 1]), &mut widget);
+                term.subwindow(Box2::new([0, 0], [width - 1, height - 1]), |w| {
+                    w.fill_widget(&mut widget);
+                });
             }
         }
     }
@@ -299,13 +301,8 @@ impl<'a> TerminalWindow<'a> {
         ret
     }
 
-    pub fn add_widget<W: Widget>(&mut self, area: Box2<u16>, widget: &mut W) -> &mut Self {
-        self.subwindow(area, |w| widget.render(w));
-        self
-    }
-
     /// Fills the entirety of this window with the provided widget.
-    pub fn fill_widget<W: Widget>(&mut self, widget: &mut W) -> &mut Self {
+    pub fn fill_widget<W: AreaFillingWidget>(&mut self, widget: &mut W) -> &Self {
         widget.render(self);
         self
     }
