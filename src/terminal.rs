@@ -300,6 +300,42 @@ impl<'a> Window<'a> {
         self
     }
 
+    /// Splits this window in half at x, resulting in ranges covering [0, x) and
+    /// [x, width).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `x <= 0 || x >= self.size().width`.
+    pub fn vsplit(self, x: u16) -> VSplit<'a> {
+        let width = self.size().width;
+        assert!(x > 0, "x must be at least 1");
+        assert!(x < width, "x ({x}) must be less than width ({width})");
+        VSplit {
+            window: self,
+            x,
+            has_left: true,
+            has_right: true,
+        }
+    }
+
+    /// Splits this window in half at y, resulting in ranges covering [0, y) and
+    /// [y, height).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `y <= 0 || y >= self.size().height`.
+    pub fn hsplit(self, y: u16) -> HSplit<'a> {
+        let height = self.size().height;
+        assert!(y > 0, "y must be at least 1");
+        assert!(y < height, "y ({y}) must be less than height ({height})");
+        HSplit {
+            window: self,
+            y,
+            has_top: true,
+            has_bottom: true,
+        }
+    }
+
     fn subwindow(&mut self, area: Box2<u16>) -> Window<'_> {
         let offset_area = self.offset_area(area);
         Window {
@@ -579,6 +615,82 @@ impl<'a> DoubleEndedIterator for Row<'a> {
 }
 
 impl<'a> FusedIterator for Row<'a> {}
+
+#[derive(Debug)]
+pub struct VSplit<'a> {
+    window: Window<'a>,
+    x: u16,
+    has_left: bool,
+    has_right: bool,
+}
+
+impl<'a> VSplit<'a> {
+    /// The left subwindow.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the left subwindow has already been used
+    pub fn left(&mut self) -> Window<'_> {
+        assert!(self.has_left, "Left subwindow already used");
+        self.has_left = false;
+        self.window.subwindow(Box2::new(
+            [0, 0],
+            [self.x - 1, self.window.area.max.y - self.window.area.min.y],
+        ))
+    }
+
+    /// The right subwindow.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the right subwindow has already been used
+    pub fn right(&mut self) -> Window<'_> {
+        assert!(self.has_right, "Right subwindow already used");
+        self.has_right = false;
+        self.window.subwindow(Box2::new(
+            [self.x, 0],
+            self.window.area.max - self.window.area.min,
+        ))
+    }
+}
+
+#[derive(Debug)]
+pub struct HSplit<'a> {
+    window: Window<'a>,
+    y: u16,
+    has_top: bool,
+    has_bottom: bool,
+}
+
+impl<'a> HSplit<'a> {
+    /// The top subwindow.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the top subwindow has already been used
+    pub fn top(&mut self) -> Window<'_> {
+        assert!(self.has_top, "Top subwindow already used");
+        self.has_top = false;
+        self.window.subwindow(Box2::new(
+            [0, 0],
+            [self.window.area.max.x - self.window.area.min.x, self.y - 1],
+        ))
+    }
+
+    /// The bottom subwindow.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the bottom subwindow has already been used
+    pub fn bottom(&mut self) -> Window<'_> {
+        assert!(self.has_bottom, "Bottom subwindow already used");
+        self.has_bottom = false;
+        self.window.subwindow(Box2::new(
+            [0, self.y],
+            self.window.area.max - self.window.area.min,
+        ))
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Cell {
@@ -1302,5 +1414,85 @@ mod tests {
                 assert_eq!(term.overdrawn(), Some(Box2::new([0, 0], [5, 4])))
             },
         )
+    }
+
+    #[test]
+    #[should_panic]
+    fn vsplit_cant_double_left() {
+        let mut term = Terminal::new([8, 8]);
+        let mut split = term.edit(Overdrawn::None).vsplit(4);
+        split.left();
+        split.left();
+    }
+
+    #[test]
+    #[should_panic]
+    fn vsplit_cant_double_right() {
+        let mut term = Terminal::new([8, 8]);
+        let mut split = term.edit(Overdrawn::None).vsplit(4);
+        split.right();
+        split.right();
+    }
+
+    #[test]
+    fn vsplit_correct_area() {
+        let mut term = Terminal::new([8, 2]);
+        let mut split = term.edit(Overdrawn::None).vsplit(3);
+        assert_eq!(split.left().area, Box2::new([0, 0], [2, 1]));
+        assert_eq!(split.right().area, Box2::new([3, 0], [7, 1]));
+    }
+
+    #[test]
+    fn vsplit_renders() {
+        Terminal::test_widget(
+            [8, 2],
+            Overdrawn::All,
+            |term: Window| {
+                let mut split = term.vsplit(3);
+                crate::widget::decoration::FillArea::with_char('l').render(split.left());
+                crate::widget::decoration::FillArea::with_char('r').render(split.right());
+            },
+            |term| term.assert_chars_equal(["lllrrrrr", "lllrrrrr"]),
+        )
+    }
+
+    #[test]
+    #[should_panic]
+    fn hsplit_cant_double_top() {
+        let mut term = Terminal::new([8, 8]);
+        let mut split = term.edit(Overdrawn::None).hsplit(4);
+        split.top();
+        split.top();
+    }
+
+    #[test]
+    #[should_panic]
+    fn hsplit_cant_double_bottom() {
+        let mut term = Terminal::new([8, 8]);
+        let mut split = term.edit(Overdrawn::None).hsplit(4);
+        split.bottom();
+        split.bottom();
+    }
+
+    #[test]
+    fn hsplit_correct_area() {
+        let mut term = Terminal::new([2, 8]);
+        let mut split = term.edit(Overdrawn::None).hsplit(3);
+        assert_eq!(split.top().area, Box2::new([0, 0], [1, 2]));
+        assert_eq!(split.bottom().area, Box2::new([0, 3], [1, 7]));
+    }
+
+    #[test]
+    fn hsplit_renders() {
+        Terminal::test_widget(
+            [2, 8],
+            Overdrawn::All,
+            |term: Window| {
+                let mut split = term.hsplit(3);
+                crate::widget::decoration::FillArea::with_char('t').render(split.top());
+                crate::widget::decoration::FillArea::with_char('b').render(split.bottom());
+            },
+            |term| term.assert_chars_equal(["tt", "tt", "tt", "bb", "bb", "bb", "bb", "bb"]),
+        );
     }
 }
