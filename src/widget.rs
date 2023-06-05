@@ -1,4 +1,4 @@
-use crate::terminal::TerminalWindow;
+use crate::terminal::Window;
 
 pub mod decoration;
 pub mod style;
@@ -15,24 +15,24 @@ pub trait AreaFillingWidget {
     /// Nothing should be written outside of `terminal.size()`.
     ///
     /// The terminal keeps track of what area of it has been overwritten
-    fn render(&mut self, terminal: TerminalWindow);
+    fn render(&mut self, terminal: Window);
 }
 
 impl AreaFillingWidget for Box<dyn AreaFillingWidget> {
-    fn render(&mut self, terminal: TerminalWindow) {
+    fn render(&mut self, terminal: Window) {
         (**self).render(terminal)
     }
 }
 
 impl AreaFillingWidget for () {
-    fn render(&mut self, _terminal: TerminalWindow) {}
+    fn render(&mut self, _terminal: Window) {}
 }
 
 impl<F> AreaFillingWidget for F
 where
-    F: FnMut(TerminalWindow),
+    F: FnMut(Window),
 {
-    fn render(&mut self, terminal: TerminalWindow) {
+    fn render(&mut self, terminal: Window) {
         self(terminal)
     }
 }

@@ -28,9 +28,9 @@ impl Terminal {
         }
     }
 
-    pub fn edit(&mut self, overdrawn: Overdrawn) -> TerminalWindow<'_> {
+    pub fn edit(&mut self, overdrawn: Overdrawn) -> Window<'_> {
         let area = Box2::new([0, 0], self.size.to_vec().map(|v| v.saturating_sub(1)));
-        TerminalWindow {
+        Window {
             area,
             overdrawn: match overdrawn {
                 Overdrawn::None => None,
@@ -38,7 +38,7 @@ impl Terminal {
                 Overdrawn::All => Some(area),
             },
             term: self,
-            parent: TerminalWindowParent::Terminal,
+            parent: WindowParent::Terminal,
         }
     }
 
@@ -53,7 +53,7 @@ impl Terminal {
         size: impl Into<Size2<u16>>,
         overdrawn: Overdrawn,
         mut widget: impl AreaFillingWidget,
-        mut test: impl FnMut(&TerminalWindow),
+        mut test: impl FnMut(&Window),
     ) {
         let size = size.into();
 
@@ -106,15 +106,15 @@ pub enum Overdrawn {
 type OverdrawnArea = Option<Box2<u16>>;
 
 #[derive(Debug)]
-pub struct TerminalWindow<'a> {
+pub struct Window<'a> {
     area: Box2<u16>,
     overdrawn: OverdrawnArea,
     term: &'a mut Terminal,
-    parent: TerminalWindowParent<'a>,
+    parent: WindowParent<'a>,
 }
 
 #[derive(Debug)]
-enum TerminalWindowParent<'a> {
+enum WindowParent<'a> {
     Terminal,
     TerminalWindow {
         offset: &'a Pos2<u16>,
@@ -122,7 +122,7 @@ enum TerminalWindowParent<'a> {
     },
 }
 
-impl<'a> TerminalWindow<'a> {
+impl<'a> Window<'a> {
     fn offset_pos(&self, pos: impl Into<Pos2<u16>>) -> Pos2<u16> {
         let pos = pos.into();
         let size = self.size();
@@ -300,28 +300,28 @@ impl<'a> TerminalWindow<'a> {
         self
     }
 
-    fn subwindow(&mut self, area: Box2<u16>) -> TerminalWindow<'_> {
+    fn subwindow(&mut self, area: Box2<u16>) -> Window<'_> {
         let offset_area = self.offset_area(area);
-        TerminalWindow {
+        Window {
             area: offset_area,
             overdrawn: self
                 .overdrawn
                 .and_then(|o| o.intersection(area))
                 .map(|o| o.translate_sub(area.min)),
             term: self.term,
-            parent: TerminalWindowParent::TerminalWindow {
+            parent: WindowParent::TerminalWindow {
                 offset: &self.area.min,
                 overdrawn: &mut self.overdrawn,
             },
         }
     }
 
-    fn duplicate(&mut self) -> TerminalWindow<'_> {
-        TerminalWindow {
+    fn duplicate(&mut self) -> Window<'_> {
+        Window {
             area: self.area,
             overdrawn: self.overdrawn,
             term: self.term,
-            parent: TerminalWindowParent::TerminalWindow {
+            parent: WindowParent::TerminalWindow {
                 offset: &self.area.min,
                 overdrawn: &mut self.overdrawn,
             },
@@ -390,11 +390,11 @@ impl<'a> TerminalWindow<'a> {
     }
 }
 
-impl<'a> Drop for TerminalWindow<'a> {
+impl<'a> Drop for Window<'a> {
     fn drop(&mut self) {
         match &mut self.parent {
-            TerminalWindowParent::Terminal => {}
-            TerminalWindowParent::TerminalWindow { offset, overdrawn } => {
+            WindowParent::Terminal => {}
+            WindowParent::TerminalWindow { offset, overdrawn } => {
                 if let Some(self_overdrawn) = self.overdrawn {
                     let self_offset = self.area.min - **offset;
                     let self_overdrawn = self_overdrawn.translate(self_offset);
@@ -709,7 +709,7 @@ char_type!(DoubleWidthChar, DoubleWidth);
 mod tests {
     use super::*;
 
-    fn term(mut f: impl FnMut(TerminalWindow)) {
+    fn term(mut f: impl FnMut(Window)) {
         #[rustfmt::skip]
         let mut term = Terminal {
             size: Size2::new(4, 3),
@@ -966,7 +966,7 @@ mod tests {
         Terminal::test_widget(
             [3, 3],
             Overdrawn::None,
-            |mut term: TerminalWindow| {
+            |mut term: Window| {
                 term.set_cell([1, 1], 'c');
             },
             |term| {
@@ -981,7 +981,7 @@ mod tests {
         Terminal::test_widget(
             [4, 3],
             Overdrawn::None,
-            |mut term: TerminalWindow| {
+            |mut term: Window| {
                 term.set_cell([1, 1], '✨');
             },
             |term| {
@@ -996,7 +996,7 @@ mod tests {
         Terminal::test_widget(
             [4, 4],
             Overdrawn::None,
-            |mut term: TerminalWindow| {
+            |mut term: Window| {
                 term.set_cell([0, 0], 'a')
                     .set_cell([3, 0], 'b')
                     .set_cell([0, 3], 'c')
@@ -1014,7 +1014,7 @@ mod tests {
         Terminal::test_widget(
             [8, 4],
             Overdrawn::None,
-            |mut term: TerminalWindow| {
+            |mut term: Window| {
                 term.set_cell([0, 0], '✨')
                     .set_cell([6, 0], '🌈')
                     .set_cell([0, 3], '全')
@@ -1032,7 +1032,7 @@ mod tests {
         Terminal::test_widget(
             [12, 3],
             Overdrawn::None,
-            |mut term: TerminalWindow| {
+            |mut term: Window| {
                 term.fill_horizontal([1, 1], 10, 'c');
             },
             |term| {
@@ -1047,7 +1047,7 @@ mod tests {
         Terminal::test_widget(
             [12, 3],
             Overdrawn::None,
-            |mut term: TerminalWindow| {
+            |mut term: Window| {
                 term.fill_horizontal([1, 1], 10, '✨');
             },
             |term| {
@@ -1062,7 +1062,7 @@ mod tests {
         Terminal::test_widget(
             [11, 3],
             Overdrawn::None,
-            |mut term: TerminalWindow| {
+            |mut term: Window| {
                 term.fill_horizontal([1, 1], 9, '✨');
             },
             |term| {
@@ -1077,7 +1077,7 @@ mod tests {
         Terminal::test_widget(
             [12, 3],
             Overdrawn::None,
-            |mut term: TerminalWindow| {
+            |mut term: Window| {
                 term.fill_horizontal([0, 0], 12, 'a')
                     .fill_horizontal([0, 2], 12, 'b');
             },
@@ -1093,7 +1093,7 @@ mod tests {
         Terminal::test_widget(
             [12, 3],
             Overdrawn::None,
-            |mut term: TerminalWindow| {
+            |mut term: Window| {
                 term.fill_horizontal([0, 0], 12, '✨')
                     .fill_horizontal([0, 2], 12, '全');
             },
@@ -1109,7 +1109,7 @@ mod tests {
         Terminal::test_widget(
             [11, 3],
             Overdrawn::None,
-            |mut term: TerminalWindow| {
+            |mut term: Window| {
                 term.fill_horizontal([0, 0], 11, '✨')
                     .fill_horizontal([0, 2], 11, '全');
             },
@@ -1125,7 +1125,7 @@ mod tests {
         Terminal::test_widget(
             [3, 12],
             Overdrawn::None,
-            |mut term: TerminalWindow| {
+            |mut term: Window| {
                 term.fill_vertical([1, 1], 10, 'c');
             },
             |term| {
@@ -1143,7 +1143,7 @@ mod tests {
         Terminal::test_widget(
             [4, 12],
             Overdrawn::None,
-            |mut term: TerminalWindow| {
+            |mut term: Window| {
                 term.fill_vertical([1, 1], 10, '✨');
             },
             |term| {
@@ -1161,7 +1161,7 @@ mod tests {
         Terminal::test_widget(
             [3, 12],
             Overdrawn::None,
-            |mut term: TerminalWindow| {
+            |mut term: Window| {
                 term.fill_vertical([0, 0], 12, 'a')
                     .fill_vertical([2, 0], 12, 'b');
             },
@@ -1180,7 +1180,7 @@ mod tests {
         Terminal::test_widget(
             [5, 12],
             Overdrawn::None,
-            |mut term: TerminalWindow| {
+            |mut term: Window| {
                 term.fill_vertical([0, 0], 12, '✨')
                     .fill_vertical([3, 0], 12, '全');
             },
@@ -1200,7 +1200,7 @@ mod tests {
         Terminal::test_widget(
             [8, 5],
             Overdrawn::None,
-            |mut term: TerminalWindow| {
+            |mut term: Window| {
                 term.fill_area(area, 'c');
             },
             |term| {
@@ -1218,7 +1218,7 @@ mod tests {
         Terminal::test_widget(
             [8, 5],
             Overdrawn::None,
-            |mut term: TerminalWindow| {
+            |mut term: Window| {
                 term.fill_area(area, '✨');
             },
             |term| {
@@ -1239,7 +1239,7 @@ mod tests {
         Terminal::test_widget(
             [7, 5],
             Overdrawn::None,
-            |mut term: TerminalWindow| {
+            |mut term: Window| {
                 term.fill_area(Box2::new([1, 1], [5, 3]), '✨');
             },
             |term| {
@@ -1255,7 +1255,7 @@ mod tests {
         Terminal::test_widget(
             [8, 5],
             Overdrawn::None,
-            |mut term: TerminalWindow| {
+            |mut term: Window| {
                 term.fill_area(area, 'c');
             },
             |term| {
@@ -1273,7 +1273,7 @@ mod tests {
         Terminal::test_widget(
             [8, 5],
             Overdrawn::None,
-            |mut term: TerminalWindow| {
+            |mut term: Window| {
                 term.fill_area(area, '✨');
             },
             |term| {
@@ -1294,7 +1294,7 @@ mod tests {
         Terminal::test_widget(
             [7, 5],
             Overdrawn::None,
-            |mut term: TerminalWindow| {
+            |mut term: Window| {
                 term.fill_area(Box2::new([0, 0], [6, 4]), '✨');
             },
             |term| {

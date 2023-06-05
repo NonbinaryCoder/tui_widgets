@@ -1,5 +1,5 @@
 use crate::{
-    terminal::{Cell, TerminalWindow},
+    terminal::{Cell, Window},
     widget::{style::Color, AreaFillingWidget},
 };
 
@@ -17,7 +17,7 @@ impl FillArea {
 }
 
 impl AreaFillingWidget for FillArea {
-    fn render(&mut self, mut term: TerminalWindow) {
+    fn render(&mut self, mut term: Window) {
         if let Some(overdrawn) = term.overdrawn() {
             term.fill_area(overdrawn, self.0);
         }
