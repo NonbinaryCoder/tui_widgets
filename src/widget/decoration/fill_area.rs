@@ -17,9 +17,9 @@ impl FillArea {
 }
 
 impl AreaFillingWidget for FillArea {
-    fn render(&mut self, terminal: &mut TerminalWindow) {
-        if let Some(overdrawn) = terminal.overdrawn() {
-            terminal.fill_area(overdrawn, self.0);
+    fn render(&mut self, mut term: TerminalWindow) {
+        if let Some(overdrawn) = term.overdrawn() {
+            term.fill_area(overdrawn, self.0);
         }
     }
 }
@@ -32,9 +32,7 @@ mod tests {
 
     #[test]
     fn renders_sw() {
-        Terminal::test_widget([8, 6], Overdrawn::All, |term| {
-            term.fill_widget(&mut FillArea::with_char('c'));
-
+        Terminal::test_widget([8, 6], Overdrawn::All, FillArea::with_char('c'), |term| {
             term.assert_chars_equal([
                 "cccccccc", "cccccccc", "cccccccc", "cccccccc", "cccccccc", "cccccccc",
             ]);
@@ -43,9 +41,7 @@ mod tests {
 
     #[test]
     fn renders_dw() {
-        Terminal::test_widget([8, 6], Overdrawn::All, |term| {
-            term.fill_widget(&mut FillArea::with_char('✨'));
-
+        Terminal::test_widget([8, 6], Overdrawn::All, FillArea::with_char('✨'), |term| {
             term.assert_chars_equal([
                 "✨✨✨✨",
                 "✨✨✨✨",
@@ -59,9 +55,7 @@ mod tests {
 
     #[test]
     fn renders_dw_odd_width() {
-        Terminal::test_widget([7, 6], Overdrawn::All, |term| {
-            term.fill_widget(&mut FillArea::with_char('✨'));
-
+        Terminal::test_widget([7, 6], Overdrawn::All, FillArea::with_char('✨'), |term| {
             term.assert_chars_equal([
                 "✨✨✨ ",
                 "✨✨✨ ",

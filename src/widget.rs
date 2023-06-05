@@ -15,24 +15,24 @@ pub trait AreaFillingWidget {
     /// Nothing should be written outside of `terminal.size()`.
     ///
     /// The terminal keeps track of what area of it has been overwritten
-    fn render(&mut self, terminal: &mut TerminalWindow);
+    fn render(&mut self, terminal: TerminalWindow);
 }
 
 impl AreaFillingWidget for Box<dyn AreaFillingWidget> {
-    fn render(&mut self, terminal: &mut TerminalWindow) {
+    fn render(&mut self, terminal: TerminalWindow) {
         (**self).render(terminal)
     }
 }
 
 impl AreaFillingWidget for () {
-    fn render(&mut self, _terminal: &mut TerminalWindow) {}
+    fn render(&mut self, _terminal: TerminalWindow) {}
 }
 
 impl<F> AreaFillingWidget for F
 where
-    F: FnMut(&mut TerminalWindow),
+    F: FnMut(TerminalWindow),
 {
-    fn render(&mut self, terminal: &mut TerminalWindow) {
+    fn render(&mut self, terminal: TerminalWindow) {
         self(terminal)
     }
 }
