@@ -652,6 +652,20 @@ impl<'a> VSplit<'a> {
             self.window.area.max - self.window.area.min,
         ))
     }
+
+    /// Renders widgets into the subwindows of this.
+    ///
+    /// # Panics
+    ///
+    /// Panics if either subwindow has already been used.
+    pub fn add_widgets<L, R>(mut self, left: &mut L, right: &mut R)
+    where
+        L: AreaFillingWidget,
+        R: AreaFillingWidget,
+    {
+        left.render(self.left());
+        right.render(self.right());
+    }
 }
 
 #[derive(Debug)]
@@ -689,6 +703,20 @@ impl<'a> HSplit<'a> {
             [0, self.y],
             self.window.area.max - self.window.area.min,
         ))
+    }
+
+    /// Renders widgets into the subwindows of this.
+    ///
+    /// # Panics
+    ///
+    /// Panics if either subwindow has already been used.
+    pub fn add_widgets<T, B>(mut self, top: &mut T, bottom: &mut B)
+    where
+        T: AreaFillingWidget,
+        B: AreaFillingWidget,
+    {
+        top.render(self.top());
+        bottom.render(self.bottom());
     }
 }
 

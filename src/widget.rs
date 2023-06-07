@@ -1,6 +1,7 @@
 use crate::terminal::Window;
 
 pub mod decoration;
+pub mod layout;
 pub mod style;
 
 /// A widget in a tui app that fills the entire area it is given.
