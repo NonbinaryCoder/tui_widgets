@@ -336,7 +336,7 @@ impl<'a> Window<'a> {
         }
     }
 
-    fn subwindow(&mut self, area: Box2<u16>) -> Window<'_> {
+    pub(crate) fn subwindow(&mut self, area: Box2<u16>) -> Window<'_> {
         let offset_area = self.offset_area(area);
         Window {
             area: offset_area,

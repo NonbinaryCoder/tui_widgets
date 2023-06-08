@@ -1,6 +1,9 @@
-use crate::terminal::Window;
+use crate::{
+    math::{Box2, Size2},
+    terminal::Window,
+};
 
-use super::AreaFillingWidget;
+use super::{collection::AreaFillingWidgetCollection, AreaFillingWidget};
 
 /// A vertical split, sharing space evenly between the left and right widgets.
 #[non_exhaustive]
@@ -44,6 +47,52 @@ impl<T: AreaFillingWidget, B: AreaFillingWidget> AreaFillingWidget for HSplit<T,
         if height >= 2 {
             term.hsplit(height / 2)
                 .add_widgets(&mut self.top, &mut self.bottom);
+        }
+    }
+}
+
+pub struct VSplitN<C: AreaFillingWidgetCollection>(C);
+
+impl<C: AreaFillingWidgetCollection> AreaFillingWidget for VSplitN<C> {
+    fn render(&mut self, mut term: Window) {
+        let Size2 { width, height } = term.size();
+        let widget_count = self.0.len();
+        if width as usize >= widget_count {
+            let widget_width = width / widget_count as u16;
+            let num_larger = (width - widget_width * widget_count as u16) as usize;
+            let mut left_edge = 0;
+            for index in 0..widget_count {
+                let widget_width = widget_width + (num_larger > index) as u16;
+                let right_edge = left_edge + widget_width - 1;
+                self.0.render(
+                    index,
+                    term.subwindow(Box2::new([left_edge, 0], [right_edge, height - 1])),
+                );
+                left_edge = right_edge + 1;
+            }
+        }
+    }
+}
+
+pub struct HSplitN<C: AreaFillingWidgetCollection>(C);
+
+impl<C: AreaFillingWidgetCollection> AreaFillingWidget for HSplitN<C> {
+    fn render(&mut self, mut term: Window) {
+        let Size2 { width, height } = term.size();
+        let widget_count = self.0.len();
+        if height as usize >= widget_count {
+            let widget_height = height / widget_count as u16;
+            let num_larger = (height - widget_height * widget_count as u16) as usize;
+            let mut top_edge = 0;
+            for index in 0..widget_count {
+                let widget_height = widget_height + (num_larger > index) as u16;
+                let bottom_edge = top_edge + widget_height - 1;
+                self.0.render(
+                    index,
+                    term.subwindow(Box2::new([0, top_edge], [width - 1, bottom_edge])),
+                );
+                top_edge = bottom_edge + 1;
+            }
         }
     }
 }
@@ -99,5 +148,110 @@ mod tests {
             FillArea::with_char('t'),
             FillArea::with_char('b'),
         ))
+    }
+
+    #[test]
+    fn vsplit_n_renders_array_8() {
+        Terminal::test_widget(
+            [8, 1],
+            Overdrawn::All,
+            VSplitN([
+                FillArea::with_char('a'),
+                FillArea::with_char('b'),
+                FillArea::with_char('c'),
+                FillArea::with_char('d'),
+            ]),
+            |term| term.assert_chars_equal(["aabbccdd"]),
+        );
+    }
+
+    #[test]
+    fn vsplit_n_renders_array_mut_8() {
+        Terminal::test_widget(
+            [8, 1],
+            Overdrawn::All,
+            VSplitN(&mut [
+                FillArea::with_char('a'),
+                FillArea::with_char('b'),
+                FillArea::with_char('c'),
+                FillArea::with_char('d'),
+            ]),
+            |term| term.assert_chars_equal(["aabbccdd"]),
+        );
+    }
+
+    #[test]
+    fn vsplit_n_renders_tuple_8() {
+        Terminal::test_widget(
+            [8, 1],
+            Overdrawn::All,
+            VSplitN((FillArea::with_char('a'), (), FillArea::with_char('c'), ())),
+            |term| term.assert_chars_equal(["aa  cc  "]),
+        );
+    }
+
+    #[test]
+    fn vsplit_n_renders_array_6() {
+        Terminal::test_widget(
+            [6, 1],
+            Overdrawn::All,
+            VSplitN([
+                FillArea::with_char('a'),
+                FillArea::with_char('b'),
+                FillArea::with_char('c'),
+                FillArea::with_char('d'),
+            ]),
+            |term| term.assert_chars_equal(["aabbcd"]),
+        );
+    }
+
+    #[test]
+    fn stress_vsplit_n() {
+        Terminal::stress_area_filling_widget(VSplitN([
+            FillArea::with_char('a'),
+            FillArea::with_char('b'),
+            FillArea::with_char('c'),
+            FillArea::with_char('d'),
+        ]));
+    }
+
+    #[test]
+    fn hsplit_n_renders_array_8() {
+        Terminal::test_widget(
+            [1, 8],
+            Overdrawn::All,
+            HSplitN([
+                FillArea::with_char('a'),
+                FillArea::with_char('b'),
+                FillArea::with_char('c'),
+                FillArea::with_char('d'),
+            ]),
+            |term| term.assert_chars_equal(["a", "a", "b", "b", "c", "c", "d", "d"]),
+        )
+    }
+
+    #[test]
+    fn hsplit_n_renders_array_6() {
+        Terminal::test_widget(
+            [1, 6],
+            Overdrawn::All,
+            HSplitN([
+                FillArea::with_char('a'),
+                FillArea::with_char('b'),
+                FillArea::with_char('c'),
+                FillArea::with_char('d'),
+            ]),
+            |term| term.assert_chars_equal(["a", "a", "b", "b", "c", "d"]),
+        )
+    }
+
+    #[test]
+    fn stress_hsplit_n() {
+        Terminal::stress_area_filling_widget(HSplitN([
+            FillArea::with_char('a'),
+            FillArea::with_char('b'),
+            FillArea::with_char('c'),
+            FillArea::with_char('d'),
+        ]));
     }
 }

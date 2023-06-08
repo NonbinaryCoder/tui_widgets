@@ -15,6 +15,19 @@ pub trait AreaFillingWidgetCollection {
     fn render(&mut self, index: usize, terminal: Window);
 }
 
+impl<T> AreaFillingWidgetCollection for &mut T
+where
+    T: AreaFillingWidgetCollection,
+{
+    fn len(&self) -> usize {
+        (**self).len()
+    }
+
+    fn render(&mut self, index: usize, term: Window) {
+        (**self).render(index, term);
+    }
+}
+
 impl<W, const N: usize> AreaFillingWidgetCollection for [W; N]
 where
     W: AreaFillingWidget,
