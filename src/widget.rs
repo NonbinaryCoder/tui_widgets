@@ -1,5 +1,6 @@
 use crate::terminal::Window;
 
+pub mod collection;
 pub mod decoration;
 pub mod layout;
 pub mod style;
