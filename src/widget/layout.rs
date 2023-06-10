@@ -5,11 +5,11 @@ use crate::{
 
 use super::{collection::AreaFillingWidgetCollection, AreaFillingWidget};
 
-/// A vertical split, sharing space evenly between the left and right widgets.
+/// A vertical split, sharing horizontal space between the left and right widgets.
 #[non_exhaustive]
 pub struct VSplit<L, R> {
-    left: L,
-    right: R,
+    pub left: L,
+    pub right: R,
 }
 
 impl<L, R> VSplit<L, R> {
@@ -28,11 +28,11 @@ impl<L: AreaFillingWidget, R: AreaFillingWidget> AreaFillingWidget for VSplit<L,
     }
 }
 
-/// A horizontal split, sharing space evenly between the top and bottom widgets.
+/// A horizontal split, sharing vertical space between the top and bottom widgets.
 #[non_exhaustive]
 pub struct HSplit<T, B> {
-    top: T,
-    bottom: B,
+    pub top: T,
+    pub bottom: B,
 }
 
 impl<T, B> HSplit<T, B> {
@@ -51,6 +51,7 @@ impl<T: AreaFillingWidget, B: AreaFillingWidget> AreaFillingWidget for HSplit<T,
     }
 }
 
+/// Vertical splits, sharing horizontal space evenly between widgets.
 pub struct VSplitN<C: AreaFillingWidgetCollection>(C);
 
 impl<C: AreaFillingWidgetCollection> AreaFillingWidget for VSplitN<C> {
@@ -74,6 +75,7 @@ impl<C: AreaFillingWidgetCollection> AreaFillingWidget for VSplitN<C> {
     }
 }
 
+/// Horizontal splits, sharing vertical space evenly between widgets.
 pub struct HSplitN<C: AreaFillingWidgetCollection>(C);
 
 impl<C: AreaFillingWidgetCollection> AreaFillingWidget for HSplitN<C> {

@@ -10,8 +10,14 @@ use super::AreaFillingWidget;
 /// [`AreaFillingWidget`]; and for tuples of up to 12 elements where all elements
 /// implement [`AreaFillingWidget`].
 pub trait AreaFillingWidgetCollection {
+    /// The number of widgets in the collection.
     fn len(&self) -> usize;
 
+    /// Renders the widget at `index` into the provided [`Window`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index >= self.len()`
     fn render(&mut self, index: usize, terminal: Window);
 }
 

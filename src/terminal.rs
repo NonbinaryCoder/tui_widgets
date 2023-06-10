@@ -13,6 +13,7 @@ use crate::{
     },
 };
 
+/// A simulated terminal.
 #[derive(Debug)]
 pub struct Terminal {
     size: Size2<u16>,
@@ -28,6 +29,8 @@ impl Terminal {
         }
     }
 
+    /// Creates a [`Window`] with access to the entire terminal.  Allows
+    /// specifying what area of the window is marked as overdrawn.
     pub fn edit(&mut self, overdrawn: Overdrawn) -> Window<'_> {
         let area = Box2::new([0, 0], self.size.to_vec().map(|v| v.saturating_sub(1)));
         Window {
@@ -47,8 +50,8 @@ impl Terminal {
         pos.x + pos.y * self.size.width as usize
     }
 
-    /// Creates a terminal window that can be used to test whether or not
-    /// widgets work as intended.  Not intended to be used outside of tests.
+    /// Renders the provided widget into a [`Window`] with the provided size,
+    /// then runs the test function on that window.
     pub fn test_widget(
         size: impl Into<Size2<u16>>,
         overdrawn: Overdrawn,
@@ -96,6 +99,7 @@ impl Terminal {
     }
 }
 
+/// What part of the terminal has been overdrawn since it was last printed?
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Overdrawn {
     None,
@@ -105,6 +109,10 @@ pub enum Overdrawn {
 
 type OverdrawnArea = Option<Box2<u16>>;
 
+/// A view into a [`Terminal`].
+///
+/// Provides methods for editing the [`Cell`]s in that view, and keeps track of
+/// which cells have been overwritten.
 #[derive(Debug)]
 pub struct Window<'a> {
     area: Box2<u16>,
@@ -146,14 +154,18 @@ impl<'a> Window<'a> {
         self.term.cell_index(self.offset_pos(pos))
     }
 
+    /// The size of this window in cells
     pub fn size(&self) -> Size2<u16> {
         (self.area.max.to_vec() + Vec2::splat(1) - self.area.min.to_vec()).to_size()
     }
 
+    /// The smallest box containing all cells within this that have been
+    /// overwritten since the terminal was last printed.
     pub fn overdrawn(&self) -> Option<Box2<u16>> {
         self.overdrawn
     }
 
+    /// An iterator over the rows of this.
     pub fn rows(&self) -> Rows<'_> {
         Rows {
             width: self.size().width as usize,
@@ -177,6 +189,14 @@ impl<'a> Window<'a> {
         self.overdrawn = Some(self.overdrawn.map_or(area, |o| o.contain_box(area)));
     }
 
+    /// Replaces the cell at the specified position with the provided cell.
+    ///
+    /// If the provided cell contains a double width character, it's formatting
+    /// is coppied to the cell one right of `pos`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `pos` is not contained by this.
     pub fn set_cell(&mut self, pos: impl Into<Pos2<u16>>, cell: impl Into<Cell>) -> &mut Self {
         let pos = pos.into();
         let cell = cell.into();
@@ -197,6 +217,13 @@ impl<'a> Window<'a> {
     }
 
     /// Repeats a cell to fill a strip `width` cells long horizontally.
+    ///
+    /// If the provided cell contains a double width character and `width` is
+    /// odd, the last cell in the strip is left unchanged.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the strip is not fully contained within this.
     pub fn fill_horizontal(
         &mut self,
         pos: impl Into<Pos2<u16>>,
@@ -228,6 +255,13 @@ impl<'a> Window<'a> {
     }
 
     /// Repeats a cell to fill a strip `height` cells tall vertically.
+    ///
+    /// If the cell contains a double width character the strip is two cells
+    /// wide, otherwise the strip is one cell wide.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the strip is not fully contained within this.
     pub fn fill_vertical(
         &mut self,
         pos: impl Into<Pos2<u16>>,
@@ -264,6 +298,13 @@ impl<'a> Window<'a> {
     }
 
     /// Repeats a cell to fill the specified area.
+    ///
+    /// If the cell contains a double width character and the width of the area
+    /// is odd, the last column is left unchanged.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the area is not fully contained within this.
     pub fn fill_area(&mut self, area: Box2<u16>, cell: impl Into<Cell>) -> &mut Self {
         let size = (area.max.to_vec() + Vec2::splat(1) - area.min.to_vec()).to_size();
 
@@ -420,7 +461,11 @@ impl<'a> Window<'a> {
     }
 
     /// Asserts that all the chars in the cells of this are the same as the
-    /// chars in the template
+    /// chars in the template.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the characters don't match.
     pub fn assert_chars_equal<'b>(&self, template: impl AsRef<[&'b str]>) {
         self.assert_equal_inner(template.as_ref(), |row| row.chars(), |cell| cell.ch);
     }
@@ -616,6 +661,12 @@ impl<'a> DoubleEndedIterator for Row<'a> {
 
 impl<'a> FusedIterator for Row<'a> {}
 
+/// A terminal window split into left and right segments.
+///
+/// Created by the [`vsplit`](Window::vsplit) method on [`Window`].
+///
+/// For a widget that splits horizontal space between two subwidgets, see
+/// [`widget::layout::VSplit`](struct@crate::widget::layout::VSplit).
 #[derive(Debug)]
 pub struct VSplit<'a> {
     window: Window<'a>,
@@ -668,6 +719,12 @@ impl<'a> VSplit<'a> {
     }
 }
 
+/// A terminal window split into top and bottom segments.
+///
+/// Created by the [`hsplit`](Window::hsplit) method on [`Window`].
+///
+/// For a widget that splits vertical space between two subwidgets, see
+/// [`widget::layout::HSplit`](struct@crate::widget::layout::HSplit).
 #[derive(Debug)]
 pub struct HSplit<'a> {
     window: Window<'a>,
@@ -720,6 +777,13 @@ impl<'a> HSplit<'a> {
     }
 }
 
+/// A cell/character in a terminal.
+///
+/// # Double-width characters
+///
+/// Double-width characters are represented by two cells.  The left cell
+/// contains the character, whereas the right cell's character is space.  Both
+/// cells have the same formatting.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Cell {
     pub ch: char,
@@ -745,6 +809,7 @@ impl From<char> for Cell {
 }
 
 impl Cell {
+    /// A cell with the character `ch` and default formatting.
     pub fn new(ch: char) -> Self {
         Self {
             ch,
@@ -752,30 +817,36 @@ impl Cell {
         }
     }
 
+    /// Returns a copy of this cell with it's character set to `ch`.
     pub fn ch(self, ch: char) -> Self {
         Self { ch, ..self }
     }
 
+    /// Returns a copy of this cell with it's formatting set to `fmt`.
     pub fn fmt(self, fmt: impl Into<Formatting>) -> Self {
         let fmt = fmt.into();
         Self { fmt, ..self }
     }
 
+    /// Returns a copy of this cell with it's foreground and background colors
+    /// set to the colors specified.
     pub fn colors(self, colors: Colors) -> Self {
         self.fmt(self.fmt.colors(colors))
     }
 
+    /// Returns a copy of this cell with it's foreground color set to `fg`.
     pub fn fg(self, fg: Color) -> Self {
         self.colors(self.fmt.colors.fg(fg))
     }
 
+    /// Returns a copy of this cell with it's background color set to `bg`.
     pub fn bg(self, bg: Color) -> Self {
         self.colors(self.fmt.colors.bg(bg))
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum CharType {
+enum CharType {
     SingleWidth(SingleWidthChar),
     DoubleWidth(DoubleWidthChar),
     Other(char),
@@ -811,14 +882,11 @@ impl CharType {
             _ => CharType::Other(ch),
         }
     }
-
-    pub fn char(self) -> char {
-        *self.as_ref()
-    }
 }
 
 macro_rules! char_type {
-    ($name:ident, $label:ident) => {
+    ($doc:expr, $name:ident, $label:ident) => {
+        #[doc = concat!("A character guaranteed to take up ", $doc)]
         #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
         pub struct $name(char);
 
@@ -842,8 +910,8 @@ macro_rules! char_type {
     };
 }
 
-char_type!(SingleWidthChar, SingleWidth);
-char_type!(DoubleWidthChar, DoubleWidth);
+char_type!("a single cell", SingleWidthChar, SingleWidth);
+char_type!("two cells", DoubleWidthChar, DoubleWidth);
 
 #[cfg(test)]
 mod tests {

@@ -1,5 +1,6 @@
 pub use crossterm::style::Color;
 
+/// Foreground and background colors of a [`Cell`](crate::terminal::Cell).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Colors {
     pub fg: Color,
@@ -16,6 +17,7 @@ impl Default for Colors {
 }
 
 impl Colors {
+    /// Use the same color for foreground and background.
     pub fn splat(color: Color) -> Colors {
         Self {
             fg: color,
@@ -32,6 +34,10 @@ impl Colors {
     }
 }
 
+/// All the elements that make up the formatting of a [`Cell`](crate::terminal::Cell).
+///
+/// This struct can be created by calling [`Into::into`] on any of it's
+/// components.  Calling [`Into::into`] on `()` creates the default formatting.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub struct Formatting {
@@ -39,12 +45,15 @@ pub struct Formatting {
 }
 
 impl From<()> for Formatting {
+    /// Constructs the default formatting.
     fn from((): ()) -> Self {
         Self::default()
     }
 }
 
 impl From<Colors> for Formatting {
+    /// Constructs formatting with the provided colors.  All other fields are
+    /// set to their defaults.
     fn from(colors: Colors) -> Self {
         Self {
             colors,

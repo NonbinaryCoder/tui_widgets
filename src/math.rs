@@ -106,6 +106,18 @@ impl<T> Size2<T> {
         self.width * self.height
     }
 
+    /// Returns true if this contains the point specified.  The point is not
+    /// considered contained if it is on the positive edge of this.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use tui_widgets::math::{Pos2, Size2};
+    /// let size = Size2::new(3, 4);
+    /// assert_eq!(size.contains_pos(Pos2::new(0, 0)), true);
+    /// assert_eq!(size.contains_pos(Pos2::new(2, 3)), true);
+    /// assert_eq!(size.contains_pos(Pos2::new(3, 4)), false);
+    /// ```
     pub fn contains_pos(self, pos: impl Into<Pos2<T>>) -> bool
     where
         T: PartialOrd,
@@ -114,6 +126,19 @@ impl<T> Size2<T> {
         pos.x < self.width && pos.y < self.height
     }
 
+    /// Returns true if this contains all points contained by `b`.  Points are
+    /// not considered contained if they are on the positive edge of this.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use tui_widgets::math::{Box2, Size2};
+    /// let size = Size2::new(6, 8);
+    /// assert_eq!(size.contains_box(Box2::new([0, 0], [2, 3])), true);
+    /// assert_eq!(size.contains_box(Box2::new([2, 2], [5, 7])), true);
+    /// assert_eq!(size.contains_box(Box2::new([2, 2], [6, 8])), false);
+    /// assert_eq!(size.contains_box(Box2::new([2, 9], [4, 9])), false);
+    /// ```
     pub fn contains_box(self, b: Box2<T>) -> bool
     where
         T: PartialOrd + Copy,
@@ -199,7 +224,9 @@ formatting!(
     Size2: "", "x", ""
 );
 
-/// A rectangle defined by it's top left and bottom right points
+/// A rectangle defined by it's top left and bottom right points.
+///
+/// May not behave correctly if `min` > `max`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Box2<T> {
     pub min: Pos2<T>,
@@ -214,6 +241,7 @@ impl<T> Box2<T> {
         }
     }
 
+    /// A box containing only `pos`.
     pub fn from_pos(pos: impl Into<Pos2<T>>) -> Self
     where
         T: Clone,
@@ -243,6 +271,8 @@ impl<T> Box2<T> {
         }
     }
 
+    /// Returns a box containing this box and `pos`, and containing as few other
+    /// points as possible.
     pub fn contain_pos(self, pos: impl Into<Pos2<T>>) -> Self
     where
         T: Ord + Clone,
@@ -254,6 +284,7 @@ impl<T> Box2<T> {
         )
     }
 
+    /// Returns a box containing both boxes and as few other points as possible.
     pub fn contain_box(self, b: Box2<T>) -> Self
     where
         T: Ord,
@@ -264,6 +295,19 @@ impl<T> Box2<T> {
         )
     }
 
+    /// True if `pos` is inside this.  `pos` counts as being inside even if it
+    /// is on the edge of this.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use tui_widgets::math::{Box2, Pos2};
+    /// let b = Box2::new([3, 4], [5, 6]);
+    /// assert_eq!(b.contains_pos(Pos2::new(3, 4)), true);
+    /// assert_eq!(b.contains_pos(Pos2::new(4, 5)), true);
+    /// assert_eq!(b.contains_pos(Pos2::new(5, 6)), true);
+    /// assert_eq!(b.contains_pos(Pos2::new(3, 7)), false);
+    /// ```
     pub fn contains_pos(self, pos: Pos2<T>) -> bool
     where
         T: PartialOrd,
@@ -271,6 +315,17 @@ impl<T> Box2<T> {
         self.min.x <= pos.x && self.min.y <= pos.y && self.max.x >= pos.x && self.max.y >= pos.y
     }
 
+    /// True if all the points in `other` are contained by this.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use tui_widgets::math::Box2;
+    /// let b = Box2::new([3, 4], [80, 64]);
+    /// assert_eq!(b.contains_box(Box2::new([5, 5], [10, 10])), true);
+    /// assert_eq!(b.contains_box(Box2::new([0, 0], [5, 5])),   false);
+    /// assert_eq!(b.contains_box(Box2::new([0, 0], [1, 1])),   false);
+    /// ```
     pub fn contains_box(self, other: Box2<T>) -> bool
     where
         T: PartialOrd + Clone,
@@ -278,6 +333,28 @@ impl<T> Box2<T> {
         self.clone().contains_pos(other.min) && self.contains_pos(other.max)
     }
 
+    /// The box containing only the points in both `self` and `other`.  Returns
+    /// `None` if no such box exists.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use tui_widgets::math::Box2;
+    /// let b = Box2::new([4, 4], [8, 8]);
+    ///
+    /// assert_eq!(
+    ///     b.intersection(Box2::new([2, 2], [3, 3])),
+    ///     None
+    /// );
+    /// assert_eq!(
+    ///     b.intersection(Box2::new([2, 2], [4, 4])),
+    ///     Some(Box2::new([4, 4], [4, 4]))
+    /// );
+    /// assert_eq!(
+    ///     b.intersection(Box2::new([2, 2], [12, 12])),
+    ///     Some(Box2::new([4, 4], [8, 8]))
+    /// );
+    /// ```
     pub fn intersection(self, other: Self) -> Option<Self>
     where
         T: Ord + Copy,

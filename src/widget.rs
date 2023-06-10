@@ -5,18 +5,9 @@ pub mod decoration;
 pub mod layout;
 pub mod style;
 
-/// A widget in a tui app that fills the entire area it is given.
+/// A widget in a tui app that fills an entire [`Window`].
 pub trait AreaFillingWidget {
-    /// Renders this widget into the provided [`TerminalWriter`].
-    ///
-    /// # Implementation Notes
-    ///
-    /// The window keeps track of the offset of the widget, so all widgets can
-    /// assume they are at (0, 0).
-    ///
-    /// Nothing should be written outside of `terminal.size()`.
-    ///
-    /// The terminal keeps track of what area of it has been overwritten
+    /// Renders this widget into the provided [`Window`].
     fn render(&mut self, terminal: Window);
 }
 
@@ -30,10 +21,7 @@ impl AreaFillingWidget for () {
     fn render(&mut self, _terminal: Window) {}
 }
 
-impl<F> AreaFillingWidget for F
-where
-    F: FnMut(Window),
-{
+impl<F: FnMut(Window)> AreaFillingWidget for F {
     fn render(&mut self, terminal: Window) {
         self(terminal)
     }
