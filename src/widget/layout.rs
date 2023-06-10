@@ -58,7 +58,7 @@ impl<C: AreaFillingWidgetCollection> AreaFillingWidget for VSplitN<C> {
     fn render(&mut self, mut term: Window) {
         let Size2 { width, height } = term.size();
         let widget_count = self.0.len();
-        if width as usize >= widget_count {
+        if widget_count > 0 && width as usize >= widget_count {
             let widget_width = width / widget_count as u16;
             let num_larger = (width - widget_width * widget_count as u16) as usize;
             let mut left_edge = 0;
@@ -82,7 +82,7 @@ impl<C: AreaFillingWidgetCollection> AreaFillingWidget for HSplitN<C> {
     fn render(&mut self, mut term: Window) {
         let Size2 { width, height } = term.size();
         let widget_count = self.0.len();
-        if height as usize >= widget_count {
+        if widget_count > 0 && height as usize >= widget_count {
             let widget_height = height / widget_count as u16;
             let num_larger = (height - widget_height * widget_count as u16) as usize;
             let mut top_edge = 0;
@@ -218,6 +218,11 @@ mod tests {
     }
 
     #[test]
+    fn stress_vsplit_n_equals_0() {
+        Terminal::stress_area_filling_widget(VSplitN::<[(); 0]>([]));
+    }
+
+    #[test]
     fn hsplit_n_renders_array_8() {
         Terminal::test_widget(
             [1, 8],
@@ -255,5 +260,10 @@ mod tests {
             FillArea::with_char('c'),
             FillArea::with_char('d'),
         ]));
+    }
+
+    #[test]
+    fn stress_hsplit_n_equals_0() {
+        Terminal::stress_area_filling_widget(HSplitN::<[(); 0]>([]));
     }
 }
