@@ -381,6 +381,36 @@ impl<T: Clone> From<Pos2<T>> for Box2<T> {
     }
 }
 
+/// A floating point value in the range \[0, 1\]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+pub struct Proportion(f32);
+
+impl Proportion {
+    pub const HALF: Self = Self(0.5);
+
+    /// Creates a proportion from the given value, clamping it into the range
+    /// \[0, 1\].
+    pub fn new(val: f32) -> Self {
+        Self(val.clamp(0.0, 1.0))
+    }
+
+    pub const fn get(self) -> f32 {
+        self.0
+    }
+
+    /// Divides `size` into two segments based on this proportion.
+    pub fn divide(self, size: u16) -> (u16, u16) {
+        let a = (size as f32 * self.0) as u16;
+        (a, size - a)
+    }
+}
+
+impl Default for Proportion {
+    fn default() -> Self {
+        Self::HALF
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
